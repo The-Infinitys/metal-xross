@@ -1,0 +1,5 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Inner Cap for Gain -->
+  <circle cx="50" cy="50" r="45" fill="#444" stroke="#777" stroke-width="2"/>
+  <line x1="50" y1="50" x2="50" y2="15" stroke="#f44" stroke-width="6" stroke-linecap="round" />
+</svg>

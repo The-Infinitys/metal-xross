@@ -1,6 +1,19 @@
+[workspace]
+members = ["xtask"]
+
 [package]
 name = "metal-xross"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "metal-xross-standalone"
+path = "src/main.rs"
+
 [dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
+nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+log = "0.4"
