@@ -1,4 +1,4 @@
-use nih_plug_vizia::ViziaState;
+use nih_plug_egui::EguiState;
 use std::sync::Arc;
 
 use nih_plug::{
@@ -9,7 +9,7 @@ use nih_plug::{
 pub struct MetalXrossParams {
     /// The editor state.
     #[persist = "editor_state"]
-    pub editor_state: Arc<ViziaState>,
+    pub editor_state: Arc<EguiState>,
 
     /// The gain of the effect.
     #[id = "mx_gain"]
@@ -71,8 +71,9 @@ impl Default for MetalXrossParams {
             },
         );
         let level = FloatParam::new("Level", 0.0, FloatRange::Linear { min: 0.0, max: 2.0 });
+        let editor_state = EguiState::from_size(800, 500);
         Self {
-            editor_state: ViziaState::new(|| (800, 500)),
+            editor_state,
             style,
             tight,
             bright,

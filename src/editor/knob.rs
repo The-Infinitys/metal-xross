@@ -1,93 +1,52 @@
-use nih_plug::prelude::Param;
-use nih_plug_vizia::vizia::prelude::*;
-use nih_plug_vizia::vizia::vg;
-use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
+use nih_plug::params::FloatParam;
+use nih_plug::prelude::{Param, ParamSetter};
+use nih_plug_egui::egui;
 
-pub struct CustomKnob {
-    param_base: ParamWidgetBase,
+pub struct CustomKnob<'a> {
+    param: &'a FloatParam,
+    setter: &'a ParamSetter<'a>,
 }
 
-impl CustomKnob {
-    pub fn new<L, Params, P, FMap>(cx: &mut Context, params: L, params_to_param: FMap) -> Handle<'_, Self>
-    where
-        L: Lens<Target = Params> + Clone,
-        Params: 'static,
-        P: Param + 'static,
-        FMap: Fn(&Params) -> &P + Copy + 'static,
-    {
-        Self {
-            param_base: ParamWidgetBase::new(cx, params.clone(), params_to_param),
+impl<'a> CustomKnob<'a> {
+    pub fn new(param: &'a FloatParam, setter: &'a ParamSetter<'a>) -> Self {
+        Self { param, setter }
+    }
+}
+
+impl<'a> egui::Widget for CustomKnob<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let desired_size = egui::vec2(80.0, 80.0);
+        let (rect, response) = ui.allocate_at_least(desired_size, egui::Sense::drag());
+
+        if response.dragged() {
+            let delta = response.drag_delta().x - response.drag_delta().y;
+            let current_value = self.param.unmodulated_normalized_value();
+            let new_value = (current_value + delta * 0.005).clamp(0.0, 1.0);
+            self.setter.set_parameter_normalized(self.param, new_value);
         }
-        .build(
-            cx,
-            ParamWidgetBase::build_view(params, params_to_param, move |_cx, _param_data| {}),
-        )
-    }
-}
 
-impl View for CustomKnob {
-    fn element(&self) -> Option<&'static str> {
-        Some("custom-knob")
-    }
+        if ui.is_rect_visible(rect) {
+            let painter = ui.painter();
+            let center = rect.center();
+            let radius = rect.width().min(rect.height()) * 0.45;
 
-    fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-        event.map(|window_event, meta| match window_event {
-            WindowEvent::MouseDown(MouseButton::Left) => {
-                self.param_base.begin_set_parameter(cx);
-                cx.capture();
-                cx.set_active(true);
-                meta.consume();
-            }
-            WindowEvent::MouseUp(MouseButton::Left) => {
-                self.param_base.end_set_parameter(cx);
-                cx.release();
-                cx.set_active(false);
-                meta.consume();
-            }
-            WindowEvent::MouseMove(x, y) => {
-                if cx.is_active() {
-                    let scale = 0.005;
-                    let delta_x = *x - cx.mouse().previous_cursorx;
-                    let delta_y = cx.mouse().previous_cursory - *y;
-                    let delta = delta_x + delta_y;
-                    let new_value = (self.param_base.unmodulated_normalized_value() + delta * scale)
-                        .clamp(0.0, 1.0);
-                    self.param_base.set_normalized_value(cx, new_value);
-                }
-            }
-            _ => {}
-        });
-    }
+            let value = self.param.unmodulated_normalized_value();
 
-    fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
-        let bounds = cx.bounds();
-        let center_x = bounds.x + bounds.width() / 2.0;
-        let center_y = bounds.y + bounds.height() / 2.0;
-        let radius = bounds.width().min(bounds.height()) * 0.45;
+            // ノブの本体
+            painter.circle_filled(center, radius, egui::Color32::from_rgb(51, 51, 51));
+            painter.circle_stroke(center, radius, egui::Stroke::new(2.0, egui::Color32::from_rgb(102, 102, 102)));
 
-        let value = self.param_base.unmodulated_normalized_value();
+            // インジケーター
+            let angle = (value * 270.0 - 135.0).to_radians();
+            let indicator_len = radius * 0.8;
+            let target = center + egui::vec2(angle.sin(), -angle.cos()) * indicator_len;
 
-        let mut circle_path = vg::Path::new();
-        circle_path.circle(center_x, center_y, radius);
-        let mut circle_paint = vg::Paint::color(vg::Color::hex("333333"));
-        canvas.fill_path(&circle_path, &circle_paint);
+            painter.line_segment(
+                [center, target],
+                egui::Stroke::new(4.0, egui::Color32::from_rgb(255, 0, 0)),
+            );
+        }
 
-        circle_paint.set_color(vg::Color::hex("666666"));
-        circle_paint.set_line_width(2.0);
-        canvas.stroke_path(&circle_path, &circle_paint);
-
-        let angle = (value * 270.0 - 135.0).to_radians();
-        let indicator_len = radius * 0.8;
-        let target_x = center_x + angle.sin() * indicator_len;
-        let target_y = center_y - angle.cos() * indicator_len;
-
-        let mut indicator_path = vg::Path::new();
-        indicator_path.move_to(center_x, center_y);
-        indicator_path.line_to(target_x, target_y);
-
-        let mut indicator_paint = vg::Paint::color(vg::Color::hex("ff0000"));
-        indicator_paint.set_line_width(4.0);
-        indicator_paint.set_line_cap(vg::LineCap::Round);
-        canvas.stroke_path(&indicator_path, &indicator_paint);
+        response
     }
 }
