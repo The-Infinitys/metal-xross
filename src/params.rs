@@ -1,3 +1,4 @@
+use nih_plug_vizia::ViziaState;
 use std::sync::Arc;
 
 use nih_plug::{
@@ -6,24 +7,30 @@ use nih_plug::{
 };
 #[derive(Params)]
 pub struct MetalXrossParams {
+    /// The editor state.
+    #[persist = "editor_state"]
+    pub editor_state: Arc<ViziaState>,
+
     /// The gain of the effect.
-    #[id = "gain"]
+    #[id = "mx_gain"]
     pub gain: FloatParam,
     /// The volume of the effect.
-    #[id = "level"]
+    #[id = "mx_lvl"]
     pub level: FloatParam,
     /// The style of the effect.
-    #[id = "style"]
+    #[id = "mx_styl"]
     pub style: FloatParam,
     /// The tightness of the effect.
-    #[id = "tight"]
+    #[id = "mx_tght"]
     pub tight: FloatParam,
     /// The brightness of the effect.
-    #[id = "bright"]
+    #[id = "mx_brgh"]
     pub bright: FloatParam,
-    #[nested(group = "Equalizer")]
+
+    #[nested(group = "Equalizer", id_prefix = "eq_")]
     pub eq: EqualizerParams,
 }
+
 impl Default for MetalXrossParams {
     fn default() -> Self {
         // 1. Distortion Style (0.0: Crunch ~ 3.0: Metal)
@@ -65,6 +72,7 @@ impl Default for MetalXrossParams {
         );
         let level = FloatParam::new("Level", 0.0, FloatRange::Linear { min: 0.0, max: 2.0 });
         Self {
+            editor_state: ViziaState::new(|| (800, 500)),
             style,
             tight,
             bright,
@@ -83,12 +91,13 @@ pub struct PeqBandParams {
     #[id = "gain"]
     pub gain: FloatParam,
 }
+
 impl PeqBandParams {
     /// 役割（Low, Midなど）に合わせてデフォルト値を変えて生成できるようにする
     pub fn new(name: &str, default_freq: f32, min_freq: f32, max_freq: f32) -> Self {
         Self {
             freq: FloatParam::new(
-                format!("{name} Freq"), // 名前を自動生成
+                format!("{} Freq", name), // 名前を自動生成
                 default_freq,
                 FloatRange::SymmetricalSkewed {
                     min: min_freq,
@@ -102,7 +111,7 @@ impl PeqBandParams {
             .with_value_to_string(Arc::new(|v| format!("{:.1}", v))),
 
             q: FloatParam::new(
-                format!("{name} Q"),
+                format!("{} Q", name),
                 0.707,
                 // Q値は対数的に変化させたほうが「広がる・狭まる」感覚に一致します
                 FloatRange::Skewed {
@@ -113,7 +122,7 @@ impl PeqBandParams {
             ),
 
             gain: FloatParam::new(
-                format!("{name} Gain"),
+                format!("{} Gain", name),
                 0.0,
                 // センター（0dB）を真ん中に固定し、±の操作感を均等にする
                 FloatRange::SymmetricalSkewed {
@@ -130,13 +139,13 @@ impl PeqBandParams {
 }
 #[derive(Params)]
 pub struct EqualizerParams {
-    #[nested(group = "Low Band")]
+    #[nested(group = "Low Band", id_prefix = "lo_")]
     pub low: PeqBandParams,
 
-    #[nested(group = "Mid Band")]
+    #[nested(group = "Mid Band", id_prefix = "mi_")]
     pub mid: PeqBandParams,
 
-    #[nested(group = "High Band")]
+    #[nested(group = "High Band", id_prefix = "hi_")]
     pub high: PeqBandParams,
 }
 
