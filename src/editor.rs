@@ -9,7 +9,7 @@ pub mod knob;
 
 use background::PcbBackground;
 use equalizer::EqualizerBox;
-use knob::CustomKnob;
+use knob::SingleKnob;
 
 pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude::Editor>> {
     create_egui_editor(
@@ -25,22 +25,46 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
 
                     ui.vertical_centered(|ui| {
                         ui.add_space(20.0);
-                        
+
                         // 上段: ノブ3つ
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 40.0;
                             ui.columns(3, |columns| {
                                 columns[0].vertical_centered(|ui| {
-                                    ui.label(egui::RichText::new("GAIN").size(14.0).color(egui::Color32::WHITE));
-                                    ui.add(CustomKnob::new(&params.gain, setter));
+                                    ui.label(
+                                        egui::RichText::new("GAIN")
+                                            .size(14.0)
+                                            .color(egui::Color32::WHITE),
+                                    );
+                                    ui.add(SingleKnob::new(
+                                        &params.gain,
+                                        setter,
+                                        egui::Color32::from_rgb(255, 255, 0),
+                                    ));
                                 });
                                 columns[1].vertical_centered(|ui| {
-                                    ui.label(egui::RichText::new("STYLE").size(14.0).color(egui::Color32::WHITE));
-                                    ui.add(CustomKnob::new(&params.style, setter));
+                                    ui.label(
+                                        egui::RichText::new("STYLE")
+                                            .size(14.0)
+                                            .color(egui::Color32::WHITE),
+                                    );
+                                    ui.add(SingleKnob::new(
+                                        &params.style,
+                                        setter,
+                                        egui::Color32::from_rgb(0, 255, 255),
+                                    ));
                                 });
                                 columns[2].vertical_centered(|ui| {
-                                    ui.label(egui::RichText::new("LEVEL").size(14.0).color(egui::Color32::WHITE));
-                                    ui.add(CustomKnob::new(&params.level, setter));
+                                    ui.label(
+                                        egui::RichText::new("LEVEL")
+                                            .size(14.0)
+                                            .color(egui::Color32::WHITE),
+                                    );
+                                    ui.add(SingleKnob::new(
+                                        &params.level,
+                                        setter,
+                                        egui::Color32::from_rgb(255, 0, 255),
+                                    ));
                                 });
                             });
                         });
@@ -49,7 +73,11 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
 
                         // 下段: イコライザー/ビジュアライザー
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("VISUALIZER").size(14.0).color(egui::Color32::WHITE));
+                            ui.label(
+                                egui::RichText::new("VISUALIZER")
+                                    .size(14.0)
+                                    .color(egui::Color32::WHITE),
+                            );
                             ui.add_space(10.0);
                             EqualizerBox::draw(ui);
                         });

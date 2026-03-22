@@ -2,18 +2,23 @@ use nih_plug::params::FloatParam;
 use nih_plug::prelude::{Param, ParamSetter};
 use nih_plug_egui::egui;
 
-pub struct CustomKnob<'a> {
+pub struct SingleKnob<'a> {
     param: &'a FloatParam,
     setter: &'a ParamSetter<'a>,
+    color: egui::Color32,
 }
 
-impl<'a> CustomKnob<'a> {
-    pub fn new(param: &'a FloatParam, setter: &'a ParamSetter<'a>) -> Self {
-        Self { param, setter }
+impl<'a> SingleKnob<'a> {
+    pub fn new(param: &'a FloatParam, setter: &'a ParamSetter<'a>, color: egui::Color32) -> Self {
+        Self {
+            param,
+            setter,
+            color,
+        }
     }
 }
 
-impl<'a> egui::Widget for CustomKnob<'a> {
+impl<'a> egui::Widget for SingleKnob<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let desired_size = egui::vec2(80.0, 80.0);
         let (rect, response) = ui.allocate_at_least(desired_size, egui::Sense::drag());
@@ -29,22 +34,19 @@ impl<'a> egui::Widget for CustomKnob<'a> {
             let painter = ui.painter();
             let center = rect.center();
             let radius = rect.width().min(rect.height()) * 0.45;
-
+            let color = self.color;
             let value = self.param.unmodulated_normalized_value();
 
             // ノブの本体
             painter.circle_filled(center, radius, egui::Color32::from_rgb(51, 51, 51));
-            painter.circle_stroke(center, radius, egui::Stroke::new(2.0, egui::Color32::from_rgb(102, 102, 102)));
+            painter.circle_stroke(center, radius, egui::Stroke::new(2.0, color));
 
             // インジケーター
             let angle = (value * 270.0 - 135.0).to_radians();
             let indicator_len = radius * 0.8;
             let target = center + egui::vec2(angle.sin(), -angle.cos()) * indicator_len;
 
-            painter.line_segment(
-                [center, target],
-                egui::Stroke::new(4.0, egui::Color32::from_rgb(255, 0, 0)),
-            );
+            painter.line_segment([center, target], egui::Stroke::new(4.0, color));
         }
 
         response
