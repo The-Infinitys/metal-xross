@@ -1,3 +1,4 @@
+mod editor;
 mod effector;
 pub use effector::MetalXross;
 mod plugin;

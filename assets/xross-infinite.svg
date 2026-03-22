@@ -1,0 +1,55 @@
+<svg
+    id="xross-infinite"
+    class="center"
+    viewBox="0 0 100 100"
+    version="1.1"
+    xmlns="http://www.w3.org/2000/svg"
+    xmlns:xlink="http://www.w3.org/1999/xlink"
+>
+    <defs>
+        <filter id="glitch-filter">
+            <!-- 各色の抽出と移動 -->
+            <!-- Red: 左上 -->
+            <feFlood flood-color="red" result="f-red" />
+            <feComposite in="f-red" in2="SourceGraphic" operator="in" />
+            <feOffset dx="0" dy="-2.23" result="r" />
+
+            <!-- Green: 右下 -->
+            <feFlood flood-color="#0f0" result="f-green" />
+            <feComposite in="f-green" in2="SourceGraphic" operator="in" />
+            <feOffset dx="2" dy="1" result="g" />
+
+            <!-- Blue: 左下 -->
+            <feFlood flood-color="blue" result="f-blue" />
+            <feComposite in="f-blue" in2="SourceGraphic" operator="in" />
+            <feOffset dx="-2" dy="1" result="b" />
+
+            <feBlend in="r" in2="g" mode="screen" result="rg" />
+            <feBlend in="rg" in2="b" mode="screen" result="rgb" />
+            <feBlend in="rgb" in2="SourceGraphic" mode="screen" />
+        </filter>
+    </defs>
+    <path
+        d="
+            M45 45
+            l-5 -5
+            h-15
+            l-5 5
+            v10
+            l5 5
+            h15
+            l 20 -20
+            h15
+            l5 5
+            v10
+            l-5 5
+            h-15
+            l-5 -5
+            "
+        fill="none"
+        stroke="#888"
+        filter="url(#glitch-filter)"
+        stroke-width="4"
+        line-cap=""
+    />
+</svg>

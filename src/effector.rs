@@ -1,4 +1,4 @@
-use crate::params::{self, *};
+use crate::params::*;
 use std::sync::Arc;
 
 #[derive(Default)]
@@ -16,11 +16,11 @@ impl MetalXross {
     }
     pub fn process(
         &mut self,
-        buffer: &mut nih_plug::prelude::Buffer,
-        aux: &mut nih_plug::prelude::AuxiliaryBuffers,
-        context: &mut impl nih_plug::prelude::ProcessContext<Self>,
+        _buffer: &mut nih_plug::prelude::Buffer,
+        _aux: &mut nih_plug::prelude::AuxiliaryBuffers,
+        _context: &mut impl nih_plug::prelude::ProcessContext<Self>,
     ) -> nih_plug::prelude::ProcessStatus {
-        let params = self.params();
+        let _params = self.params();
 
         nih_plug::prelude::ProcessStatus::Normal
     }
