@@ -39,6 +39,14 @@ impl Plugin for MetalXross {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         crate::editor::create(self.params())
     }
+    fn initialize(
+        &mut self,
+        audio_io_layout: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        context: &mut impl InitContext<Self>,
+    ) -> bool {
+        self.initialize(audio_io_layout, buffer_config, context)
+    }
 }
 // 2. VST3固有の設定
 impl Vst3Plugin for MetalXross {
