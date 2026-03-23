@@ -5,6 +5,7 @@ members = ["xtask"]
 name = "metal-xross"
 version = "0.1.0"
 edition = "2024"
+default-run = "metal-xross-standalone"
 
 [lib]
 crate-type = ["cdylib", "lib"]

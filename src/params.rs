@@ -61,16 +61,8 @@ impl Default for MetalXrossParams {
         // 3. Bright (高域の抜け。上げるほどジャリッとする)
         let bright = FloatParam::new("Bright", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 });
 
-        let gain = FloatParam::new(
-            "Gain",
-            0.0,
-            FloatRange::Skewed {
-                min: 0.0,
-                max: 1.0,
-                factor: FloatRange::skew_factor(-0.2),
-            },
-        );
-        let level = FloatParam::new("Level", 0.0, FloatRange::Linear { min: 0.0, max: 2.0 });
+        let gain = FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 });
+        let level = FloatParam::new("Level", 1.0, FloatRange::Linear { min: 0.0, max: 2.0 });
         let editor_state = EguiState::from_size(800, 500);
         Self {
             editor_state,
