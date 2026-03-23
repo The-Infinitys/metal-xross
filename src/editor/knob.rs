@@ -51,6 +51,9 @@ impl<'a> egui::Widget for SingleKnob<'a> {
             });
             is_editing_text = false;
         }
+        if response.drag_started() {
+            self.setter.begin_set_parameter(self.param);
+        }
 
         // ドラッグによる値の更新
         let visual_val = if response.dragged() && !is_editing_text {
@@ -71,9 +74,6 @@ impl<'a> egui::Widget for SingleKnob<'a> {
             val
         };
 
-        if response.drag_started() {
-            self.setter.begin_set_parameter(self.param);
-        }
         if response.drag_stopped() {
             self.setter.end_set_parameter(self.param);
         }
