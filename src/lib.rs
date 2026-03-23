@@ -1,6 +1,6 @@
 mod editor;
-mod effector;
-pub use effector::MetalXross;
+mod xross;
+pub use xross::MetalXross;
 mod plugin;
 pub use plugin::*;
 mod params;
