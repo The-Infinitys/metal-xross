@@ -1,4 +1,7 @@
-use nih_plug_egui::{create_egui_editor, egui};
+use nih_plug_egui::{
+    create_egui_editor,
+    egui::{self, Color32},
+};
 use std::sync::Arc;
 
 use crate::params::MetalXrossParams;
@@ -29,7 +32,7 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                         // 上段: ノブ3つ
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 40.0;
-                            ui.columns(3, |columns| {
+                            ui.columns(5, |columns| {
                                 columns[0].vertical_centered(|ui| {
                                     ui.label(
                                         egui::RichText::new("GAIN")
@@ -66,21 +69,31 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                                         egui::Color32::from_rgb(255, 0, 255),
                                     ));
                                 });
+                                columns[3].vertical_centered(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("TIGHT")
+                                            .size(12.0)
+                                            .color(Color32::GRAY),
+                                    );
+                                    ui.add(SingleKnob::new(
+                                        &params.tight,
+                                        setter,
+                                        Color32::LIGHT_BLUE,
+                                    ));
+                                });
+                                columns[4].vertical_centered(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("BRIGHT")
+                                            .size(12.0)
+                                            .color(Color32::LIGHT_YELLOW),
+                                    );
+                                    ui.add(SingleKnob::new(&params.bright, setter, Color32::GOLD));
+                                });
                             });
                         });
 
-                        ui.add_space(30.0);
-
-                        // 下段: イコライザー/ビジュアライザー
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new("VISUALIZER")
-                                    .size(14.0)
-                                    .color(egui::Color32::WHITE),
-                            );
-                            ui.add_space(10.0);
-                            EqualizerBox::draw(ui);
-                        });
+                        ui.add_space(20.0);
+                        EqualizerBox::draw(ui, &params, setter);
                     });
                 });
         },
