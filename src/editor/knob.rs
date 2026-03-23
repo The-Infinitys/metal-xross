@@ -22,7 +22,7 @@ impl<'a> SingleKnob<'a> {
 impl<'a> egui::Widget for SingleKnob<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let desired_size = egui::vec2(80.0, 100.0);
-        let (rect, mut response) = ui.allocate_at_least(desired_size, egui::Sense::drag());
+        let (rect, response) = ui.allocate_at_least(desired_size, egui::Sense::drag());
 
         let id = response.id;
 

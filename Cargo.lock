@@ -1338,6 +1338,7 @@ dependencies = [
  "log",
  "nih_plug",
  "nih_plug_egui",
+ "nih_plug_xtask",
 ]
 
 [[package]]

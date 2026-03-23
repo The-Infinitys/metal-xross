@@ -13,7 +13,13 @@ crate-type = ["cdylib", "lib"]
 name = "metal-xross-standalone"
 path = "src/main.rs"
 
+
+[[bin]]
+name = "metal-xross-bundle"
+path = "xtask/src/main.rs"
+
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
+nih_plug_xtask = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 log = "0.4"

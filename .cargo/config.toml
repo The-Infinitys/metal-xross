@@ -1,0 +1,3 @@
+
+[alias]
+bundle = "run --bin metal-xross-bundle -- bundle metal-xross"
