@@ -1,124 +1,95 @@
-use crate::MetalXross;
 use nih_plug::prelude::*;
 use std::f32::consts::PI;
 
 pub struct XrossNoiseGate {
     sample_rate: f32,
-    envelope: f32,
-    gate_gain: f32,
+    gate_gain: f32,     // 0.0 ~ 1.0 の開閉状態
+    energy_smooth: f32, // 入力エネルギーの追従
 
-    // 常に最新のノイズフロアを追従する変数
-    noise_floor: f32,
-
-    // ステレオフィルタ状態
+    // フィルタ状態
     lp_state: [f32; 2],
+    hp_state: [f32; 2],
 }
 
 impl XrossNoiseGate {
     pub fn new() -> Self {
         Self {
             sample_rate: 44100.0,
-            envelope: 0.0,
             gate_gain: 1.0,
-            noise_floor: 0.001, // 緩やかに変動させる初期値
+            energy_smooth: 0.0,
             lp_state: [0.0; 2],
+            hp_state: [0.0; 2],
         }
     }
 
-    pub fn initialize(
-        &mut self,
-        _audio_io_layout: &AudioIOLayout,
-        buffer_config: &BufferConfig,
-        _context: &mut impl InitContext<MetalXross>,
-    ) -> bool {
-        self.sample_rate = buffer_config.sample_rate;
-        true
+    pub fn initialize(&mut self, sample_rate: f32) {
+        self.sample_rate = sample_rate;
     }
 
-    pub fn process(
-        &mut self,
-        buffer: &mut Buffer,
-        _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<MetalXross>,
-    ) -> bool {
-        let attack_ms = 1.0; // 立ち上がりは鋭く
-        let release_ms = 200.0; // サステインのために少し長めに
-        let atk_coef = (-1.0 / (attack_ms * 0.001 * self.sample_rate)).exp();
-        let rel_coef = (-1.0 / (release_ms * 0.001 * self.sample_rate)).exp();
-
-        // --- パラメータの定数化 (ここが肝) ---
-        let max_noise_floor = 0.01; // ノイズフロアがこれ以上上がるのを防ぐ (-40dB程度)
-        let min_noise_floor = 0.00001; // (-100dB)
-        let freeze_threshold = 0.05; // この値を超えたら演奏中とみなし、ノイズフロア更新を止める
-
-        let mut is_audible = false;
+    /// 1. 入力直後に適用：ノイズ帯域を動的にフィルタリング
+    pub fn process_pre(&mut self, buffer: &mut Buffer) {
+        let atk = 0.999;
+        let rel = 0.99995;
 
         for channel_samples in buffer.iter_samples() {
             let mut ch_idx = 0;
             for sample in channel_samples {
                 let input_abs = sample.abs();
 
-                // 1. ノイズフロア追従 (修正: 演奏中は更新をフリーズ)
-                // 入力が一定以下、かつ急激なピークでない時だけノイズ学習
-                if input_abs < freeze_threshold {
-                    // 追従速度を少し落として安定させる
-                    self.noise_floor = self.noise_floor * 0.99995 + input_abs * 0.00005;
+                // エネルギー検知 (中域〜全域)
+                if input_abs > self.energy_smooth {
+                    self.energy_smooth = self.energy_smooth * 0.9 + input_abs * 0.1;
+                } else {
+                    self.energy_smooth = self.energy_smooth * 0.9999 + input_abs * 0.0001;
                 }
 
-                // 閾値の暴走をハードリミットで抑える
-                self.noise_floor = self.noise_floor.clamp(min_noise_floor, max_noise_floor);
-
-                // 2. エンベロープ検出
-                if input_abs > self.envelope {
-                    self.envelope = self.envelope * atk_coef + input_abs * (1.0 - atk_coef);
+                // ゲートターゲットの判定
+                let threshold = 0.008;
+                let target = if self.energy_smooth > threshold {
+                    1.0
                 } else {
-                    self.envelope = self.envelope * rel_coef + input_abs * (1.0 - rel_coef);
-                }
-
-                // 3. ゲート判定 (ヒステリシスを持たせる)
-                // 開く時は threshold、閉じる時はその半分にするなどしてバタつきを防止
-                let open_threshold = self.noise_floor * 4.0;
-                let close_threshold = open_threshold * 0.5; // ヒステリシス
-
-                let target_gate = if self.gate_gain < 0.1 {
-                    if self.envelope > open_threshold {
-                        1.0
-                    } else {
-                        0.0
-                    }
-                } else {
-                    if self.envelope > close_threshold {
-                        1.0
-                    } else {
-                        0.0
-                    }
+                    0.0
                 };
 
-                // 4. ゲインスムージング (リリースをゲート専用に少し遅くするのも手)
-                let g_coef = if target_gate > self.gate_gain {
-                    atk_coef
-                } else {
-                    rel_coef
-                };
-                self.gate_gain = self.gate_gain * g_coef + target_gate * (1.0 - g_coef);
+                // ゲインスムージング (開くのは速く、閉じるのは滑らかに)
+                let g_coef = if target > self.gate_gain { atk } else { rel };
+                self.gate_gain = self.gate_gain * g_coef + target * (1.0 - g_coef);
 
-                // 5. 動的LPF (サステイン後半で高域ノイズを消す)
-                let cutoff_freq = 150.0 + (19850.0 * self.gate_gain.powi(2)); // powi(2)で少し緩やかに
-                let alpha = (2.0 * PI * cutoff_freq / self.sample_rate).min(0.9);
+                // --- 適応型フィルタ ---
+                // 弾いていない時は 700Hz~4kHz に絞り、弾くと 40Hz~16kHz まで開く
+                let lp_freq = 4000.0 + (12000.0 * self.gate_gain.powi(2));
+                let hp_freq = 300.0 * (1.0 - self.gate_gain) + 40.0;
 
-                let state = &mut self.lp_state[ch_idx % 2];
-                *state = *state * (1.0 - alpha) + (*sample * alpha);
+                let lp_alpha = (2.0 * PI * lp_freq / self.sample_rate).min(0.9);
+                let hp_alpha = (2.0 * PI * hp_freq / self.sample_rate).min(0.9);
 
-                // 6. 出力
-                let output = *state * self.gate_gain;
-                *sample = output;
+                let lp_s = &mut self.lp_state[ch_idx % 2];
+                *lp_s = *lp_s * (1.0 - lp_alpha) + (*sample * lp_alpha);
 
-                if output.abs() > 1e-6 {
-                    is_audible = true;
-                }
+                let hp_s = &mut self.hp_state[ch_idx % 2];
+                *hp_s = *hp_s * (1.0 - hp_alpha) + (*lp_s * hp_alpha);
+
+                // フィルタを通した音を入力として戻す（歪み回路へ）
+                *sample = *lp_s - *hp_s;
                 ch_idx += 1;
             }
         }
-        is_audible || self.gate_gain > 1e-6
+    }
+
+    /// 2. 最終出力直前に適用：音量を完全にシャットアウト
+    pub fn process_post(&mut self, buffer: &mut Buffer) {
+        for channel_samples in buffer.iter_samples() {
+            for sample in channel_samples {
+                // Pre段で計算された gate_gain をそのまま利用してミュート
+                // 10%以下まで閉じたら完全に0にするヒステリシス
+                let final_gain = if self.gate_gain < 0.1 {
+                    self.gate_gain * (self.gate_gain / 0.1) // 指数的に消音
+                } else {
+                    self.gate_gain
+                };
+
+                *sample *= final_gain;
+            }
+        }
     }
 }
