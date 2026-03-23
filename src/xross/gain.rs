@@ -1,7 +1,6 @@
 use crate::{MetalXross, params::MetalXrossParams};
 use nih_plug::prelude::*;
 use std::sync::Arc;
-// NonZeroU32のインポートは不要になったので削除
 
 mod crunch;
 mod dist;
@@ -20,12 +19,8 @@ pub trait XrossGainProcessor {
         config: &BufferConfig,
         context: &mut impl InitContext<MetalXross>,
     ) -> bool;
-    fn process(
-        &mut self,
-        buffer: &mut Buffer,
-        aux: &mut AuxiliaryBuffers,
-        context: &mut impl ProcessContext<MetalXross>,
-    );
+
+    fn process_channel(&mut self, slice: &mut [f32], ch_idx: usize);
 }
 
 pub struct XrossGainSystem {
@@ -34,9 +29,11 @@ pub struct XrossGainSystem {
     drive: XrossDriveSystem,
     dist: XrossDistSystem,
     metal: XrossMetalSystem,
-    tmp_buffer_data: Vec<f32>,
-    buffer_size: usize,
-    num_channels: usize,
+
+    // 各スタイルの計算結果を一時保存するバッファ
+    tmp_buffer_a: Vec<f32>,
+    tmp_buffer_b: Vec<f32>,
+    input_copy: Vec<f32>,
 }
 
 impl XrossGainSystem {
@@ -47,116 +44,92 @@ impl XrossGainSystem {
             drive: XrossDriveSystem::new(params.clone()),
             dist: XrossDistSystem::new(params.clone()),
             metal: XrossMetalSystem::new(params.clone()),
-            tmp_buffer_data: Vec::new(),
-            buffer_size: 0,
-            num_channels: 0,
+            tmp_buffer_a: Vec::new(),
+            tmp_buffer_b: Vec::new(),
+            input_copy: Vec::new(),
         }
     }
 
     pub fn initialize(
         &mut self,
-        audio_io_layout: &AudioIOLayout,
-        buffer_config: &BufferConfig,
+        layout: &AudioIOLayout,
+        config: &BufferConfig,
         context: &mut impl InitContext<MetalXross>,
     ) -> bool {
-        self.num_channels = audio_io_layout
-            .main_output_channels
-            .map(|n| n.get())
-            .unwrap_or(2) as usize;
+        // 予期せぬ大きなバッファが来ても耐えられるよう、max または 2048 の大きい方を確保
+        let reserve_size = (config.max_buffer_size as usize).max(2048);
 
-        self.buffer_size = buffer_config.max_buffer_size as usize;
-        self.tmp_buffer_data = vec![0.0; self.num_channels * self.buffer_size];
+        self.tmp_buffer_a = vec![0.0; reserve_size];
+        self.tmp_buffer_b = vec![0.0; reserve_size];
+        self.input_copy = vec![0.0; reserve_size];
 
-        self.crunch
-            .initialize(audio_io_layout, buffer_config, context);
-        self.drive
-            .initialize(audio_io_layout, buffer_config, context);
-        self.dist
-            .initialize(audio_io_layout, buffer_config, context);
-        self.metal
-            .initialize(audio_io_layout, buffer_config, context);
+        self.crunch.initialize(layout, config, context);
+        self.drive.initialize(layout, config, context);
+        self.dist.initialize(layout, config, context);
+        self.metal.initialize(layout, config, context);
 
         true
     }
-
     pub fn process(
         &mut self,
         buffer: &mut Buffer,
-        aux: &mut AuxiliaryBuffers,
-        context: &mut impl ProcessContext<MetalXross>,
+        _aux: &mut AuxiliaryBuffers,
+        _context: &mut impl ProcessContext<MetalXross>,
     ) {
         let style = self.params.style.value();
         let idx_a = (style.floor() as usize).min(3);
         let idx_b = (idx_a + 1).min(3);
         let fraction = style - idx_a as f32;
 
-        if fraction <= 0.001 || idx_a == idx_b {
-            self.dispatch_process(idx_a, buffer, aux, context);
-            return;
-        }
-
         let num_samples = buffer.samples();
 
-        for (ch, slice) in buffer.as_slice().iter().enumerate() {
-            if ch < self.num_channels {
-                let dest_start = ch * self.buffer_size;
-                self.tmp_buffer_data[dest_start..dest_start + num_samples].copy_from_slice(slice);
-            }
-        }
+        // 各エンジンの参照
+        let crunch = &mut self.crunch;
+        let drive = &mut self.drive;
+        let dist = &mut self.dist;
+        let metal = &mut self.metal;
 
-        self.dispatch_process(idx_a, buffer, aux, context);
+        for (ch_idx, channel_slice) in buffer.as_slice().iter_mut().enumerate() {
+            // 現在のバッファサイズに合わせて、確保済みの領域からスライスを切り出す
+            // もし何らかの理由で確保サイズより大きい要求が来ても落ちないように safety check
+            let end = num_samples.min(self.input_copy.len());
 
-        let mut b_slices: Vec<&mut [f32]> = (0..self.num_channels)
-            .map(|ch| {
-                let start = ch * self.buffer_size;
-                unsafe {
-                    std::slice::from_raw_parts_mut(
-                        self.tmp_buffer_data.as_mut_ptr().add(start),
-                        num_samples,
-                    )
-                }
-            })
-            .collect();
+            let in_copy = &mut self.input_copy[..end];
+            let buf_a = &mut self.tmp_buffer_a[..end];
+            let buf_b = &mut self.tmp_buffer_b[..end];
 
-        // create_buffer_from_slices 呼び出し
-        let mut buffer_b = unsafe { self.create_buffer_from_slices(&mut b_slices, num_samples) };
-        self.dispatch_process(idx_b, &mut buffer_b, aux, context);
+            // 1. 入力をコピー
+            in_copy.copy_from_slice(&channel_slice[..end]);
 
-        for (ch, slice_a) in buffer.as_slice().iter_mut().enumerate() {
-            if ch < self.num_channels {
-                let offset_b = ch * self.buffer_size;
-                let slice_b = &self.tmp_buffer_data[offset_b..offset_b + num_samples];
+            // 2. スタイルAの計算
+            buf_a.copy_from_slice(in_copy);
+            apply_style_to_slice(idx_a, crunch, drive, dist, metal, buf_a, ch_idx);
 
-                for (s_a, &s_b) in slice_a.iter_mut().zip(slice_b.iter()) {
-                    *s_a = *s_a * (1.0 - fraction) + s_b * fraction;
-                }
+            // 3. スタイルBの計算
+            buf_b.copy_from_slice(in_copy);
+            apply_style_to_slice(idx_b, crunch, drive, dist, metal, buf_b, ch_idx);
+
+            // 4. 線形補間
+            for i in 0..end {
+                channel_slice[i] = buf_a[i] * (1.0 - fraction) + buf_b[i] * fraction;
             }
         }
     }
+}
 
-    fn dispatch_process(
-        &mut self,
-        index: usize,
-        buffer: &mut Buffer,
-        aux: &mut AuxiliaryBuffers,
-        context: &mut impl ProcessContext<MetalXross>,
-    ) {
-        match index {
-            0 => self.crunch.process(buffer, aux, context),
-            1 => self.drive.process(buffer, aux, context),
-            2 => self.dist.process(buffer, aux, context),
-            _ => self.metal.process(buffer, aux, context),
-        }
-    }
-
-    // unsafe 操作を明示的に block で囲む
-    unsafe fn create_buffer_from_slices<'a>(
-        &self,
-        slices: &mut Vec<&'a mut [f32]>,
-        samples: usize,
-    ) -> Buffer<'a> {
-        let slices_ptr = slices as *mut Vec<&'a mut [f32]> as *mut Vec<&'static mut [f32]>;
-        let data = (samples, unsafe { std::ptr::read(slices_ptr) });
-        unsafe { std::mem::transmute::<_, Buffer<'a>>(data) }
+fn apply_style_to_slice(
+    index: usize,
+    crunch: &mut XrossCrunchSystem,
+    drive: &mut XrossDriveSystem,
+    dist: &mut XrossDistSystem,
+    metal: &mut XrossMetalSystem,
+    slice: &mut [f32],
+    ch_idx: usize,
+) {
+    match index {
+        0 => crunch.process_channel(slice, ch_idx),
+        1 => drive.process_channel(slice, ch_idx),
+        2 => dist.process_channel(slice, ch_idx),
+        _ => metal.process_channel(slice, ch_idx),
     }
 }

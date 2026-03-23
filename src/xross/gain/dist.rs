@@ -26,11 +26,11 @@ impl XrossGainProcessor for XrossDistSystem {
         true
     }
 
-    fn process(
+    fn process_channel(
         &mut self,
-        _buffer: &mut Buffer,
-        _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<MetalXross>,
+        slice: &mut [f32],
+        ch_idx: usize,
+        // contextが必要な場合は渡すが、多くの場合はparamsの値だけで十分
     ) {
     }
 }
