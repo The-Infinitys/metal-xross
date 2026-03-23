@@ -40,24 +40,33 @@ impl XrossNoiseGate {
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<MetalXross>,
-    ) {
-        let attack_ms = 2.0;
-        let release_ms = 150.0;
+    ) -> bool {
+        let attack_ms = 1.0; // 立ち上がりは鋭く
+        let release_ms = 200.0; // サステインのために少し長めに
         let atk_coef = (-1.0 / (attack_ms * 0.001 * self.sample_rate)).exp();
         let rel_coef = (-1.0 / (release_ms * 0.001 * self.sample_rate)).exp();
+
+        // --- パラメータの定数化 (ここが肝) ---
+        let max_noise_floor = 0.01; // ノイズフロアがこれ以上上がるのを防ぐ (-40dB程度)
+        let min_noise_floor = 0.00001; // (-100dB)
+        let freeze_threshold = 0.05; // この値を超えたら演奏中とみなし、ノイズフロア更新を止める
+
+        let mut is_audible = false;
 
         for channel_samples in buffer.iter_samples() {
             let mut ch_idx = 0;
             for sample in channel_samples {
                 let input_abs = sample.abs();
 
-                // 1. ノイズフロアの常時追従 (移動平均的な挙動)
-                // 演奏が止まった時に学習を進め、音がある時はホールドする
-                if input_abs < self.noise_floor * 5.0 {
-                    // 入力信号がノイズフロアに近い場合、ゆっくりと基準を更新
-                    self.noise_floor = self.noise_floor * 0.9999 + input_abs * 0.0001;
+                // 1. ノイズフロア追従 (修正: 演奏中は更新をフリーズ)
+                // 入力が一定以下、かつ急激なピークでない時だけノイズ学習
+                if input_abs < freeze_threshold {
+                    // 追従速度を少し落として安定させる
+                    self.noise_floor = self.noise_floor * 0.99995 + input_abs * 0.00005;
                 }
-                self.noise_floor = self.noise_floor.max(0.00001); // ゼロ除算防止
+
+                // 閾値の暴走をハードリミットで抑える
+                self.noise_floor = self.noise_floor.clamp(min_noise_floor, max_noise_floor);
 
                 // 2. エンベロープ検出
                 if input_abs > self.envelope {
@@ -66,11 +75,26 @@ impl XrossNoiseGate {
                     self.envelope = self.envelope * rel_coef + input_abs * (1.0 - rel_coef);
                 }
 
-                // 3. ゲート判定
-                let threshold = self.noise_floor * 3.0;
-                let target_gate = if self.envelope > threshold { 1.0 } else { 0.0 };
+                // 3. ゲート判定 (ヒステリシスを持たせる)
+                // 開く時は threshold、閉じる時はその半分にするなどしてバタつきを防止
+                let open_threshold = self.noise_floor * 4.0;
+                let close_threshold = open_threshold * 0.5; // ヒステリシス
 
-                // 4. スムージング
+                let target_gate = if self.gate_gain < 0.1 {
+                    if self.envelope > open_threshold {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                } else {
+                    if self.envelope > close_threshold {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                };
+
+                // 4. ゲインスムージング (リリースをゲート専用に少し遅くするのも手)
                 let g_coef = if target_gate > self.gate_gain {
                     atk_coef
                 } else {
@@ -78,18 +102,23 @@ impl XrossNoiseGate {
                 };
                 self.gate_gain = self.gate_gain * g_coef + target_gate * (1.0 - g_coef);
 
-                // 5. 動的ローパスフィルタ (Dynamic LPF)
-                // ゲインが下がるほど高域を削り、ゲートが完全に閉じる寸前の「サー」音を消す
-                let cutoff_freq = 200.0 + (19800.0 * self.gate_gain.powi(4));
-                let alpha = (2.0 * PI * cutoff_freq / self.sample_rate).min(0.95);
+                // 5. 動的LPF (サステイン後半で高域ノイズを消す)
+                let cutoff_freq = 150.0 + (19850.0 * self.gate_gain.powi(2)); // powi(2)で少し緩やかに
+                let alpha = (2.0 * PI * cutoff_freq / self.sample_rate).min(0.9);
 
                 let state = &mut self.lp_state[ch_idx % 2];
                 *state = *state * (1.0 - alpha) + (*sample * alpha);
 
-                *sample = *state * self.gate_gain;
+                // 6. 出力
+                let output = *state * self.gate_gain;
+                *sample = output;
 
+                if output.abs() > 1e-6 {
+                    is_audible = true;
+                }
                 ch_idx += 1;
             }
         }
+        is_audible || self.gate_gain > 1e-6
     }
 }
