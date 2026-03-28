@@ -8,12 +8,15 @@ mod noise_gate;
 use noise_gate::XrossNoiseGate;
 mod gain;
 use gain::XrossGainSystem;
+mod level;
+use level::XrossLevelSystem;
 
 pub struct MetalXross {
     params: Arc<MetalXrossParams>,
     equalizer: XrossEqualizer,
     noise_gate: XrossNoiseGate,
     gain: XrossGainSystem,
+    level: XrossLevelSystem,
 }
 impl Default for MetalXross {
     fn default() -> Self {
@@ -26,11 +29,13 @@ impl MetalXross {
         let equalizer = XrossEqualizer::new(Arc::clone(&params));
         let noise_gate = XrossNoiseGate::new();
         let gain = XrossGainSystem::new(Arc::clone(&params));
+        let level = XrossLevelSystem::new(Arc::clone(&params));
         Self {
             params,
             equalizer,
             noise_gate,
             gain,
+            level,
         }
     }
     pub fn params(&self) -> Arc<MetalXrossParams> {
@@ -44,8 +49,9 @@ impl MetalXross {
     ) -> ProcessStatus {
         self.noise_gate.process_pre(buffer);
         self.gain.process(buffer, aux, context);
-        self.equalizer.process(buffer, aux, context);
         self.noise_gate.process_post(buffer);
+        self.equalizer.process(buffer, aux, context);
+        self.level.process(buffer, aux, context);
         ProcessStatus::Normal
     }
     pub fn initialize(

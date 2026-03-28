@@ -1,12 +1,12 @@
-use super::XrossGainProcessor;
 use crate::MetalXross;
 use crate::params::MetalXrossParams;
+use crate::xross::gain::XrossGainProcessor;
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
 pub struct XrossDistSystem {
     params: Arc<MetalXrossParams>,
-    // 状態保持
+    // 状態保持（ステレオ対応）
     low_cut: Vec<f32>,
     pre_shape: Vec<f32>,
     post_lp: Vec<f32>,
@@ -22,17 +22,59 @@ impl XrossDistSystem {
         }
     }
 
-    // ハード・クリッピング関数
-    // soft_clipよりも急激に限界値へ到達させ、高調波を増やす
+    /// ハード・クリッピング関数
+    /// 線形領域を狭くし、限界値付近で急激に「角」を立たせる
     fn hard_clip(&self, x: f32, drive: f32) -> f32 {
         let pushed = x * drive;
-        // 独自の非線形関数: tanhよりも「角」が立つ特性
+        // 0.5を超えると急激にサチュレート
         if pushed.abs() < 0.5 {
-            pushed // 線形領域
+            pushed
         } else {
-            // 0.5を超えると急激にサチュレートし、1.0付近で止める
+            // tanhよりもクリッピングポイントが明確なシグモイド
             pushed.signum() * (0.5 + 0.5 * ((pushed.abs() - 0.5) * 2.0).tanh())
         }
+    }
+
+    /// サンプルごとの処理ロジック
+    fn process_sample(
+        &mut self,
+        input: f32,
+        gain: f32,
+        s_low: f32,
+        s_mid: f32,
+        s_high: f32,
+        ch: usize,
+    ) -> f32 {
+        // --- 1. PRE-EQ (Style Low -> Radical Tightening) ---
+        // ディストーションは低域が濁ると致命的なため、s_lowが低いほど大胆にカット
+        let hp_coef = 0.08 + (1.0 - s_low) * 0.72;
+        let filtered = input - self.low_cut[ch];
+        self.low_cut[ch] = input * hp_coef + self.low_cut[ch] * (1.0 - hp_coef);
+
+        // --- 2. PRE-SHAPE (Style Mid -> Mid-Range Focus) ---
+        // Style Midが高いほど、歪みの前に中域を強く盛り上げ、音を前に出す
+        let mid_focus = s_mid * 0.8;
+        let shaped = filtered + (filtered - self.pre_shape[ch]) * mid_focus;
+        self.pre_shape[ch] = filtered;
+
+        // --- 3. MAIN DISTORTION STAGE (Style Mid also affects Gain) ---
+        // ディストーション用のハイゲイン設定
+        let drive_amount = gain * 70.0 + 5.0 + (s_mid * 20.0);
+        let mut x = self.hard_clip(shaped, drive_amount);
+
+        // --- 4. SECONDARY CLIP (Wave Squashing) ---
+        // 波形をさらに四角くし、サステインと倍音を稼ぐ
+        x = (x * 1.6).clamp(-1.0, 1.0) * 0.85;
+
+        // --- 5. POST-FILTER (Style High -> Edge Control) ---
+        // Style Highが低いときはダークに、高いときは「ザクザク」したエッジを強調
+        let lp_coef = 0.03 + (s_high * 0.57);
+        let final_out = x * lp_coef + self.post_lp[ch] * (1.0 - lp_coef);
+        self.post_lp[ch] = final_out;
+
+        // --- 6. OUTPUT LEVEL ---
+        // 圧縮感が強いため、出力は少し控えめに調整
+        final_out * 0.45
     }
 }
 
@@ -52,43 +94,12 @@ impl XrossGainProcessor for XrossDistSystem {
 
     fn process_channel(&mut self, slice: &mut [f32], ch_idx: usize) {
         let gain = self.params.gain.value();
-        let tight = self.params.tight.value();
-        let bright = self.params.bright.value();
-
-        // Distortion用のハイゲイン設定 (Driveよりさらに強力)
-        let drive_amount = gain * 80.0 + 5.0;
+        let s_low = self.params.style.low.value();
+        let s_mid = self.params.style.mid.value();
+        let s_high = self.params.style.high.value();
 
         for sample in slice {
-            let input = *sample;
-
-            // 1. PRE-EQ (Tightening)
-            // ディストーションは低域が濁ると「ブーミー」になるため、
-            // tightを上げるとかなり大胆に低域をカットする
-            let hp_coef = 0.1 + (tight * 0.7);
-            let filtered = input - self.low_cut[ch_idx];
-            self.low_cut[ch_idx] = input * hp_coef + self.low_cut[ch_idx] * (1.0 - hp_coef);
-
-            // 2. PRE-SHAPE (中域の強調)
-            // 80年代ディストーションのような「突き抜ける音」にするため中域を盛る
-            let mid_boost = filtered + (filtered - self.pre_shape[ch_idx]) * 0.5;
-            self.pre_shape[ch_idx] = filtered;
-
-            // 3. MAIN DISTORTION STAGE
-            // ハード・クリッピングによる深い歪み
-            let mut x = self.hard_clip(mid_boost, drive_amount);
-
-            // 4. SECONDARY CLIP (さらに波形を四角くする)
-            x = (x * 1.5).clamp(-1.0, 1.0) * 0.8;
-
-            // 5. POST-FILTER (Tone / Bright)
-            // ディストーション特有の「痛い高域」をBrightつまみでコントロール
-            // Brightが低いときはかなりダークに、高いときはザクザクしたエッジを残す
-            let lp_coef = 0.05 + (bright * 0.6);
-            let final_out = x * lp_coef + self.post_lp[ch_idx] * (1.0 - lp_coef);
-            self.post_lp[ch_idx] = final_out;
-
-            // 6. OUTPUT LEVEL
-            *sample = final_out * 0.5;
+            *sample = self.process_sample(*sample, gain, s_low, s_mid, s_high, ch_idx);
         }
     }
 }

@@ -76,7 +76,7 @@ impl XrossGainSystem {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<MetalXross>,
     ) {
-        let style = self.params.style.value();
+        let style = self.params.style.kind.value();
         let idx_a = (style.floor() as usize).min(3);
         let idx_b = (idx_a + 1).min(3);
         let fraction = style - idx_a as f32;

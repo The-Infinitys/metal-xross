@@ -28,11 +28,9 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
 
                     ui.vertical_centered(|ui| {
                         ui.add_space(20.0);
-
-                        // 上段: ノブ3つ
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 40.0;
-                            ui.columns(5, |columns| {
+                            ui.columns(6, |columns| {
                                 columns[0].vertical_centered(|ui| {
                                     ui.label(
                                         egui::RichText::new("GAIN")
@@ -42,22 +40,10 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                                     ui.add(SingleKnob::new(
                                         &params.gain,
                                         setter,
-                                        egui::Color32::from_rgb(255, 255, 0),
+                                        egui::Color32::from_rgb(255, 0, 0),
                                     ));
                                 });
                                 columns[1].vertical_centered(|ui| {
-                                    ui.label(
-                                        egui::RichText::new("STYLE")
-                                            .size(14.0)
-                                            .color(egui::Color32::WHITE),
-                                    );
-                                    ui.add(SingleKnob::new(
-                                        &params.style,
-                                        setter,
-                                        egui::Color32::from_rgb(0, 255, 255),
-                                    ));
-                                });
-                                columns[2].vertical_centered(|ui| {
                                     ui.label(
                                         egui::RichText::new("LEVEL")
                                             .size(14.0)
@@ -66,28 +52,52 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                                     ui.add(SingleKnob::new(
                                         &params.level,
                                         setter,
-                                        egui::Color32::from_rgb(255, 0, 255),
+                                        egui::Color32::from_rgb(255, 255, 0),
+                                    ));
+                                });
+                                columns[2].vertical_centered(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("STYLE")
+                                            .size(14.0)
+                                            .color(egui::Color32::WHITE),
+                                    );
+                                    ui.add(SingleKnob::new(
+                                        &params.style.kind,
+                                        setter,
+                                        egui::Color32::from_rgb(0, 255, 0),
                                     ));
                                 });
                                 columns[3].vertical_centered(|ui| {
                                     ui.label(
-                                        egui::RichText::new("TIGHT")
-                                            .size(12.0)
-                                            .color(Color32::GRAY),
+                                        egui::RichText::new("LOW").size(12.0).color(Color32::GRAY),
                                     );
                                     ui.add(SingleKnob::new(
-                                        &params.tight,
+                                        &params.style.low,
                                         setter,
-                                        Color32::LIGHT_BLUE,
+                                        egui::Color32::from_rgb(0, 255, 255),
                                     ));
                                 });
                                 columns[4].vertical_centered(|ui| {
                                     ui.label(
-                                        egui::RichText::new("BRIGHT")
+                                        egui::RichText::new("MID").size(12.0).color(Color32::GRAY),
+                                    );
+                                    ui.add(SingleKnob::new(
+                                        &params.style.mid,
+                                        setter,
+                                        egui::Color32::from_rgb(0, 0, 255),
+                                    ));
+                                });
+                                columns[5].vertical_centered(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("HIGH")
                                             .size(12.0)
                                             .color(Color32::LIGHT_YELLOW),
                                     );
-                                    ui.add(SingleKnob::new(&params.bright, setter, Color32::GOLD));
+                                    ui.add(SingleKnob::new(
+                                        &params.style.high,
+                                        setter,
+                                        egui::Color32::from_rgb(255, 0, 255),
+                                    ));
                                 });
                             });
                         });
