@@ -68,7 +68,7 @@ impl XrossDriveSystem {
         let lp_weight = 0.1 + (1.0 - s_high) * 0.6;
 
         self.mid_boost[ch] = x * lp_weight + self.mid_boost[ch] * (1.0 - lp_weight);
-        x = x + bright_val * s_high;
+        x += bright_val * s_high;
 
         // --- 5. OUTPUT GAIN ---
         // 歪ませてもレベルが一定になるよう補正

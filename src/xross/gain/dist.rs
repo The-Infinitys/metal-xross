@@ -74,7 +74,7 @@ impl XrossDistSystem {
 
         // --- 6. OUTPUT LEVEL ---
         // 圧縮感が強いため、出力は少し控えめに調整
-        final_out * 0.45
+        final_out * 0.6
     }
 }
 

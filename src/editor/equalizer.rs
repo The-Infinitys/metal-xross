@@ -14,7 +14,7 @@ fn norm_to_freq(norm: f32) -> f32 {
 fn freq_to_norm(freq: f32) -> f32 {
     let min_log = 20.0f32.ln();
     let max_log = 20000.0f32.ln();
-    ((freq.max(20.0).min(20000.0)).ln() - min_log) / (max_log - min_log)
+    ((freq.clamp(20.0, 20000.0)).ln() - min_log) / (max_log - min_log)
 }
 
 pub enum FilterType {
@@ -232,15 +232,13 @@ impl EqualizerBox {
 
         // ポップアップ表示
         if ui.memory(|mem| mem.is_popup_open(popup_id)) {
-            if ui.input(|i| i.pointer.any_pressed()) {
-                if let Some(mouse_pos) = ui.input(|i| i.pointer.interact_pos()) {
-                    let popup_rect = Rect::from_center_size(
-                        pos + egui::vec2(15.0, -40.0),
-                        egui::vec2(150.0, 150.0),
-                    );
-                    if !resp.hovered() && !popup_rect.contains(mouse_pos) {
-                        ui.memory_mut(|mem| mem.close_popup());
-                    }
+            if ui.input(|i| i.pointer.any_pressed())
+                && let Some(mouse_pos) = ui.input(|i| i.pointer.interact_pos())
+            {
+                let popup_rect =
+                    Rect::from_center_size(pos + egui::vec2(15.0, -40.0), egui::vec2(150.0, 150.0));
+                if !resp.hovered() && !popup_rect.contains(mouse_pos) {
+                    ui.memory_mut(|mem| mem.close_popup());
                 }
             }
             egui::Area::new(popup_id)

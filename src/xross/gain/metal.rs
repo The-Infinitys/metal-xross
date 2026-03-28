@@ -85,7 +85,7 @@ impl XrossMetalSystem {
         self.dc_block[ch] = x;
 
         // 出力レベル調整（メタルは常に最大音量に近いため、補正値を強めに）
-        out * 0.4
+        out * 0.6
     }
 }
 

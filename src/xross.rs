@@ -61,9 +61,9 @@ impl MetalXross {
         context: &mut impl InitContext<Self>,
     ) -> bool {
         self.noise_gate.initialize(buffer_config.sample_rate);
-        let gain = self
+        
+        self
             .gain
-            .initialize(audio_io_layout, buffer_config, context);
-        gain
+            .initialize(audio_io_layout, buffer_config, context)
     }
 }

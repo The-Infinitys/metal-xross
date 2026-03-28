@@ -31,8 +31,7 @@ impl XrossNoiseGate {
         let atk = 0.999;
         let rel = 0.99995;
 
-        for channel_samples in buffer.iter_samples() {
-            let mut ch_idx = 0;
+        for (ch_idx, channel_samples) in buffer.iter_samples().enumerate() {
             for sample in channel_samples {
                 let input_abs = sample.abs();
 
@@ -71,7 +70,6 @@ impl XrossNoiseGate {
 
                 // フィルタを通した音を入力として戻す（歪み回路へ）
                 *sample = *lp_s - *hp_s;
-                ch_idx += 1;
             }
         }
     }
