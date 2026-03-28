@@ -19,29 +19,50 @@ pub struct MetalXrossParams {
 }
 #[derive(Params)]
 pub struct GeneralParams {
-    #[id = "in"]
-    pub in_level: FloatParam,
+    #[nested(group = "Input", id_prefix = "input_")]
+    pub input: LevelParams,
     #[id = "gain"]
     pub gain: FloatParam,
-    #[id = "out"]
-    pub out_level: FloatParam,
+    #[nested(group = "Output", id_prefix = "output_")]
+    pub output: LevelParams,
 }
 impl Default for GeneralParams {
     fn default() -> Self {
-        let level_range = FloatRange::SymmetricalSkewed {
+        Self {
+            input: LevelParams::default(),
+            gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            output: LevelParams::default(),
+        }
+    }
+}
+#[derive(Params)]
+pub struct LevelParams {
+    #[id = "limit"]
+    pub limit: FloatParam,
+    #[id = "gain"]
+    pub gain: FloatParam,
+}
+impl Default for LevelParams {
+    fn default() -> Self {
+        let gain_range = FloatRange::SymmetricalSkewed {
             min: 0.0,
             max: 4.0,
             factor: FloatRange::skew_factor(2.0),
             center: 1.0,
         };
+
         Self {
-            in_level: FloatParam::new("In Level", 1.0, level_range),
-            gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            out_level: FloatParam::new("Out Level", 1.0, level_range),
+            limit: FloatParam::new("Limit", 0.8, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            gain: FloatParam::new("Gain", 1.0, gain_range).with_value_to_string(Arc::new(|v| {
+                if v <= 0.0 {
+                    "-inf".to_string()
+                } else {
+                    format!("{:.1}", 20.0 * v.log10())
+                }
+            })),
         }
     }
 }
-
 #[derive(Params)]
 pub struct StyleParams {
     #[id = "kind"]

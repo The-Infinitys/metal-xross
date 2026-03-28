@@ -1,3 +1,4 @@
+use nih_plug::params::FloatParam;
 use nih_plug_egui::{
     create_egui_editor,
     egui::{self, Color32},
@@ -13,7 +14,7 @@ pub mod knob;
 use background::PcbBackground;
 use equalizer::EqualizerBox;
 use knob::SingleKnob;
-
+use knob::StackedKnob;
 /// HSLからColor32を生成するヘルパー (虹色用)
 /// h, s, l は 0.0..=1.0
 fn from_hsl(h: f32, s: f32, l: f32) -> Color32 {
@@ -27,7 +28,11 @@ fn from_hsl(h: f32, s: f32, l: f32) -> Color32 {
 /// パラメータの表示設定を管理する構造体
 struct KnobConfig<'a> {
     label: &'static str,
-    param: &'a nih_plug::prelude::FloatParam, // パラメータへの参照
+    param: KnobParam<'a>,
+}
+enum KnobParam<'a> {
+    Stacked(&'a FloatParam, &'a FloatParam),
+    Single(&'a FloatParam),
 }
 
 pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude::Editor>> {
@@ -47,31 +52,37 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                     let knob_configs = [
                         KnobConfig {
                             label: "INPUT",
-                            param: &params.general.in_level,
+                            param: KnobParam::Stacked(
+                                &params.general.input.gain,
+                                &params.general.input.limit,
+                            ),
                         },
                         KnobConfig {
                             label: "GAIN",
-                            param: &params.general.gain,
+                            param: KnobParam::Single(&params.general.gain),
                         },
                         KnobConfig {
                             label: "STYLE",
-                            param: &params.style.kind,
+                            param: KnobParam::Single(&params.style.kind),
                         },
                         KnobConfig {
                             label: "LOW",
-                            param: &params.style.low,
+                            param: KnobParam::Single(&params.style.low),
                         },
                         KnobConfig {
                             label: "MID",
-                            param: &params.style.mid,
+                            param: KnobParam::Single(&params.style.mid),
                         },
                         KnobConfig {
                             label: "HIGH",
-                            param: &params.style.high,
+                            param: KnobParam::Single(&params.style.high),
                         },
                         KnobConfig {
                             label: "OUTPUT",
-                            param: &params.general.out_level,
+                            param: KnobParam::Stacked(
+                                &params.general.output.gain,
+                                &params.general.output.limit,
+                            ),
                         },
                     ];
 
@@ -100,8 +111,16 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                                         );
 
                                         ui.add_space(4.0);
-
-                                        ui.add(SingleKnob::new(config.param, setter, color));
+                                        match config.param {
+                                            KnobParam::Single(param) => {
+                                                ui.add(SingleKnob::new(param, setter, color));
+                                            }
+                                            KnobParam::Stacked(param1, param2) => {
+                                                ui.add(StackedKnob::new(
+                                                    param1, param2, setter, color, color,
+                                                ));
+                                            }
+                                        }
                                     });
                                 }
                             });
