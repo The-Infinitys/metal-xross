@@ -72,7 +72,7 @@ impl XrossNoiseGate {
                 // 「中域（ギターの芯）」が閾値を超えていれば、演奏中とみなす
                 let mid_threshold = 0.004;
                 if self.mid_energy > mid_threshold {
-                    self.hold_timer = (0.05 * self.sample_rate) as f32; // 50msホールド
+                    self.hold_timer = 0.05 * self.sample_rate; // 50msホールド
                     self.gate_gain = self.gate_gain * 0.9 + 1.0 * 0.1;
                 } else if self.hold_timer > 0.0 {
                     self.hold_timer -= 1.0;

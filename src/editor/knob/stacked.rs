@@ -51,6 +51,7 @@ impl<'a> StackedKnob<'a> {
     }
 
     // クロージャからメソッドに変更して所有権問題を回避
+    #[allow(clippy::too_many_arguments)]
     fn draw_value_edit(
         &self,
         ui: &mut egui::Ui,
@@ -115,7 +116,7 @@ impl<'a> StackedKnob<'a> {
             ui.painter().text(
                 rect_center,
                 egui::Align2::CENTER_CENTER,
-                format!("{}: {}", p.name(), p.to_string()),
+                format!("{}: {}", p.name(), p),
                 font_id,
                 egui::Color32::WHITE,
             );
