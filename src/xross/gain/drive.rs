@@ -91,7 +91,7 @@ impl XrossGainProcessor for XrossDriveSystem {
     }
 
     fn process_channel(&mut self, slice: &mut [f32], ch_idx: usize) {
-        let gain = self.params.gain.value();
+        let gain = self.params.general.gain.value();
 
         // Styleセクションの値を抽出
         let s_low = self.params.style.low.value();

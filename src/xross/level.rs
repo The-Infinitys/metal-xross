@@ -12,42 +12,55 @@ impl XrossLevelSystem {
         Self { params }
     }
 
-    /// 最終出力用のソフト・リミッター
-    /// 0.9を超えたあたりから tanh で滑らかに圧縮し、デジタルクリップを防ぐ
-    fn safety_clip(&self, x: f32) -> f32 {
-        let threshold = 0.9;
-        let abs_x = x.abs();
-
-        if abs_x <= threshold {
-            x
-        } else {
-            // thresholdを超えた分を滑らかに圧縮 (0.9 ~ 1.0の間に収める)
-            let sign = x.signum();
-            let excess = abs_x - threshold;
-            // 1.0を漸近線とするようにスケーリング
-            sign * (threshold + (1.0 - threshold) * excess.tanh())
-        }
-    }
-
-    pub fn process(
+    pub fn post_process(
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<MetalXross>,
     ) {
-        let target_level = self.params.level.value();
+        let target_level = self.params.general.out_level.value();
+        let threshold = 0.9; // 抑え込みたい基準値
 
-        // チャンネルごとに処理を行う
-        for channel_slice in buffer.as_slice() {
-            for sample in channel_slice.iter_mut() {
-                // 1. パラメータによるレベル増幅
-                let mut x = *sample * target_level;
+        // 1. まず、現在のバッファー内での最大絶対値（ピーク）を探す
+        let mut max_abs = 0.0f32;
+        buffer
+            .as_slice_immutable()
+            .iter()
+            .for_each(|channel_slice| {
+                channel_slice.iter().for_each(|sample| {
+                    let abs_v = (sample * target_level).abs();
+                    if abs_v > max_abs {
+                        max_abs = abs_v;
+                    }
+                });
+            });
 
-                // 2. セーフティ・クリップの適用
-                x = self.safety_clip(x);
+        // 2. もしピークが threshold を超えるなら、超えないための減衰係数を計算する
+        // 超えない場合は 1.0 (そのまま)
+        let reduction_factor = if max_abs > threshold {
+            threshold / max_abs
+        } else {
+            1.0
+        };
 
-                *sample = x;
+        // 3. 最終的なゲインを適用（一律に掛けるので音の性質は変わらない）
+        let final_gain = target_level * reduction_factor;
+
+        buffer.as_slice().iter_mut().for_each(|channel_slice| {
+            for v in channel_slice.iter_mut() {
+                *v *= final_gain;
             }
-        }
+        });
+    }
+    pub fn pre_process(
+        &mut self,
+        buffer: &mut Buffer,
+        _aux: &mut AuxiliaryBuffers,
+        _context: &mut impl ProcessContext<MetalXross>,
+    ) {
+        let target_level = self.params.general.in_level.value();
+        buffer.as_slice().iter_mut().for_each(|channel_slice| {
+            channel_slice.iter_mut().for_each(|v| *v *= target_level);
+        });
     }
 }

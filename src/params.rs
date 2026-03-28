@@ -8,19 +8,38 @@ pub struct MetalXrossParams {
     #[persist = "editor_state"]
     pub editor_state: Arc<EguiState>,
 
-    // --- 上段に並べるメインコントロール ---
-    #[id = "mx_gain"]
-    pub gain: FloatParam,
-
-    #[id = "mx_lvl"]
-    pub level: FloatParam,
-
+    #[nested(group = "General")]
+    pub general: GeneralParams,
     #[nested(group = "Style Settings", id_prefix = "style_")]
     pub style: StyleParams,
 
     // --- 下段に並べるEQ ---
     #[nested(group = "Equalizer", id_prefix = "eq_")]
     pub eq: EqualizerParams,
+}
+#[derive(Params)]
+pub struct GeneralParams {
+    #[id = "in"]
+    pub in_level: FloatParam,
+    #[id = "gain"]
+    pub gain: FloatParam,
+    #[id = "out"]
+    pub out_level: FloatParam,
+}
+impl Default for GeneralParams {
+    fn default() -> Self {
+        let level_range = FloatRange::SymmetricalSkewed {
+            min: 0.0,
+            max: 4.0,
+            factor: FloatRange::skew_factor(2.0),
+            center: 1.0,
+        };
+        Self {
+            in_level: FloatParam::new("In Level", 1.0, level_range),
+            gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            out_level: FloatParam::new("Out Level", 1.0, level_range),
+        }
+    }
 }
 
 #[derive(Params)]
@@ -62,8 +81,7 @@ impl Default for MetalXrossParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(800, 500),
-            gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            level: FloatParam::new("Level", 1.0, FloatRange::Linear { min: 0.0, max: 2.0 }),
+            general: GeneralParams::default(),
             style: StyleParams::default(),
             eq: EqualizerParams::default(),
         }

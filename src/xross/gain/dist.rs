@@ -93,7 +93,7 @@ impl XrossGainProcessor for XrossDistSystem {
     }
 
     fn process_channel(&mut self, slice: &mut [f32], ch_idx: usize) {
-        let gain = self.params.gain.value();
+        let gain = self.params.general.gain.value();
         let s_low = self.params.style.low.value();
         let s_mid = self.params.style.mid.value();
         let s_high = self.params.style.high.value();
