@@ -47,12 +47,12 @@ impl MetalXross {
         aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        self.level.pre_process(buffer, aux, context);
+        self.level.pre_process(buffer);
         self.noise_gate.process_pre(buffer);
         self.gain.process(buffer, aux, context);
         self.noise_gate.process_post(buffer);
         self.equalizer.process(buffer, aux, context);
-        self.level.post_process(buffer, aux, context);
+        self.level.post_process(buffer);
         ProcessStatus::Normal
     }
     pub fn initialize(
@@ -62,6 +62,7 @@ impl MetalXross {
         context: &mut impl InitContext<Self>,
     ) -> bool {
         self.noise_gate.initialize(buffer_config.sample_rate);
+        self.level.initialize(buffer_config.sample_rate);
 
         self.gain
             .initialize(audio_io_layout, buffer_config, context)
