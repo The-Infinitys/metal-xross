@@ -69,7 +69,7 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                                 });
                                 columns[3].vertical_centered(|ui| {
                                     ui.label(
-                                        egui::RichText::new("LOW").size(12.0).color(Color32::GRAY),
+                                        egui::RichText::new("LOW").size(12.0).color(Color32::WHITE),
                                     );
                                     ui.add(SingleKnob::new(
                                         &params.style.low,
@@ -79,7 +79,7 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
                                 });
                                 columns[4].vertical_centered(|ui| {
                                     ui.label(
-                                        egui::RichText::new("MID").size(12.0).color(Color32::GRAY),
+                                        egui::RichText::new("MID").size(12.0).color(Color32::WHITE),
                                     );
                                     ui.add(SingleKnob::new(
                                         &params.style.mid,

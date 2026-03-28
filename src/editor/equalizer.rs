@@ -83,45 +83,77 @@ fn get_filter_gain(f: f32, band: &PeqBandParams, filter_type: FilterType, sample
 }
 
 pub struct EqualizerBox;
+
 impl EqualizerBox {
     pub fn draw(ui: &mut egui::Ui, params: &Arc<MetalXrossParams>, setter: &ParamSetter) {
         let label_w = 45.0;
-        let margin_r = 25.0;
+        let bottom_h = 25.0;
+        let margin_r = 10.0;
+
+        let full_rect = ui.available_rect_before_wrap();
         let graph_rect = Rect::from_min_size(
-            ui.cursor().min + egui::vec2(label_w, 10.0),
+            full_rect.min + egui::vec2(label_w, 10.0),
             egui::vec2(
-                (ui.available_width() - label_w - margin_r).max(100.0),
-                (ui.available_height() - 50.0).max(100.0),
+                (full_rect.width() - label_w - margin_r).max(100.0),
+                (full_rect.height() - bottom_h - 20.0).max(100.0),
             ),
         );
 
         let painter = ui.painter();
-        painter.rect_filled(graph_rect, 2.0, Color32::from_rgb(10, 10, 12));
 
-        let stroke_grid = Stroke::new(1.0, Color32::from_rgb(40, 40, 50));
+        // 1. 背景
+        painter.rect_filled(
+            graph_rect,
+            4.0,
+            Color32::from_rgba_unmultiplied(10, 10, 12, 180),
+        );
+
+        // 2. 軸ラベル用背景
+        let left_label_rect = Rect::from_min_max(
+            Pos2::new(graph_rect.left() - label_w, graph_rect.top()),
+            Pos2::new(graph_rect.left(), graph_rect.bottom()),
+        );
+        let bottom_label_rect = Rect::from_min_max(
+            Pos2::new(graph_rect.left(), graph_rect.bottom()),
+            Pos2::new(graph_rect.right(), graph_rect.bottom() + bottom_h),
+        );
+        painter.rect_filled(
+            left_label_rect,
+            2.0,
+            Color32::from_rgba_unmultiplied(0, 0, 0, 150),
+        );
+        painter.rect_filled(
+            bottom_label_rect,
+            2.0,
+            Color32::from_rgba_unmultiplied(0, 0, 0, 150),
+        );
+
+        let stroke_grid = Stroke::new(1.0, Color32::from_rgba_unmultiplied(80, 80, 90, 80));
         let font_grid = FontId::proportional(11.0);
 
-        for g in -20..=20 {
-            if g % 5 == 0 {
-                let y = graph_rect.top() + (1.0 - (g as f32 + 20.0) / 40.0) * graph_rect.height();
-                painter.line_segment(
-                    [
-                        Pos2::new(graph_rect.left(), y),
-                        Pos2::new(graph_rect.right(), y),
-                    ],
-                    stroke_grid,
-                );
-                painter.text(
-                    Pos2::new(graph_rect.left() - 8.0, y),
-                    Align2::RIGHT_CENTER,
-                    format!("{}", g),
-                    font_grid.clone(),
-                    Color32::GRAY,
-                );
-            }
+        // 3. グリッド (水平)
+        for g in [-20, -10, 0, 10, 20] {
+            let y = graph_rect.top() + (1.0 - (g as f32 + 20.0) / 40.0) * graph_rect.height();
+            painter.line_segment(
+                [
+                    Pos2::new(graph_rect.left(), y),
+                    Pos2::new(graph_rect.right(), y),
+                ],
+                stroke_grid,
+            );
+            painter.text(
+                Pos2::new(graph_rect.left() - 8.0, y),
+                Align2::RIGHT_CENTER,
+                format!("{}", g),
+                font_grid.clone(),
+                Color32::WHITE,
+            );
         }
 
-        let f_points = [20.0, 100.0, 1000.0, 10000.0, 20000.0];
+        // 4. グリッド (垂直)
+        let f_points = [
+            20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
+        ];
         for &f in &f_points {
             let x = graph_rect.left() + freq_to_norm(f) * graph_rect.width();
             painter.line_segment(
@@ -141,12 +173,13 @@ impl EqualizerBox {
                 Align2::CENTER_CENTER,
                 txt,
                 font_grid.clone(),
-                Color32::GRAY,
+                Color32::WHITE,
             );
         }
 
+        // 5. 合計EQカーブ
         let steps = (graph_rect.width() as usize / 2).max(120);
-        let points: Vec<Pos2> = (0..=steps)
+        let curve_points: Vec<Pos2> = (0..=steps)
             .map(|i| {
                 let x_norm = i as f32 / steps as f32;
                 let f = norm_to_freq(x_norm);
@@ -161,10 +194,11 @@ impl EqualizerBox {
             })
             .collect();
         painter.add(egui::Shape::line(
-            points,
+            curve_points,
             Stroke::new(2.5, Color32::from_rgb(0, 255, 255)),
         ));
 
+        // 6. 各バンド描画
         Self::draw_band(
             ui,
             graph_rect,
@@ -216,37 +250,25 @@ impl EqualizerBox {
             egui::Sense::click_and_drag(),
         );
 
-        // --- クリック/ダブルクリック/ドラッグのロジック ---
+        // ダブルクリックリセット
         if resp.double_clicked() {
-            // ダブルクリックでリセット
-            let params_to_reset = [&band.freq, &band.gain, &band.q];
-            for p in params_to_reset {
+            for p in [&band.freq, &band.gain, &band.q] {
                 setter.begin_set_parameter(p);
                 setter.set_parameter(p, p.default_plain_value());
                 setter.end_set_parameter(p);
             }
         } else if resp.clicked() {
-            // シングルクリックでポップアップ
             ui.memory_mut(|mem| mem.toggle_popup(popup_id));
         }
 
-        // ポップアップ表示
+        // ポップアップ (DragValue)
         if ui.memory(|mem| mem.is_popup_open(popup_id)) {
-            if ui.input(|i| i.pointer.any_pressed())
-                && let Some(mouse_pos) = ui.input(|i| i.pointer.interact_pos())
-            {
-                let popup_rect =
-                    Rect::from_center_size(pos + egui::vec2(15.0, -40.0), egui::vec2(150.0, 150.0));
-                if !resp.hovered() && !popup_rect.contains(mouse_pos) {
-                    ui.memory_mut(|mem| mem.close_popup());
-                }
-            }
             egui::Area::new(popup_id)
                 .order(egui::Order::Foreground)
                 .fixed_pos(pos + egui::vec2(15.0, -40.0))
                 .show(ui.ctx(), |ui| {
                     egui::Frame::window(ui.style())
-                        .fill(Color32::from_rgb(25, 25, 30))
+                        .fill(Color32::from_rgba_unmultiplied(25, 25, 30, 240))
                         .stroke(Stroke::new(1.0, color))
                         .show(ui, |ui| {
                             ui.set_width(120.0);
@@ -281,44 +303,44 @@ impl EqualizerBox {
                 });
         }
 
-        let painter = ui.painter();
         let is_active =
             resp.hovered() || resp.dragged() || ui.memory(|mem| mem.is_popup_open(popup_id));
+        let painter = ui.painter();
 
-        // --- ガイド描画 (端に伸ばさず、操作点付近のみに限定) ---
-        let guide_alpha = if is_active { 0.7 } else { 0.25 };
-        let q_dist = (rect.width() * 0.15) / band.q.value().sqrt();
+        // 7. Qガイドの円表現
+        // Q値に反比例して半径を決定 (Q=1.0 で幅の約15%)
+        let q_val = band.q.value();
+        let base_radius = (rect.width() * 0.1) / q_val.sqrt();
+        // グラフからはみ出ないように制限
+        let q_radius = base_radius.clamp(10.0, rect.width() / 4.0);
 
-        // グラフ枠内でのみ描画されるようにクランプ
-        let left_x = (pos.x - q_dist).max(rect.left());
-        let right_x = (pos.x + q_dist).min(rect.right());
+        let guide_color = if is_active {
+            color.linear_multiply(0.3)
+        } else {
+            color.linear_multiply(0.1)
+        };
 
-        // 共通の水平Qガイド線
-        let guide_stroke = Stroke::new(6.0, color.linear_multiply(guide_alpha));
-        painter.line_segment(
-            [Pos2::new(left_x, pos.y), Pos2::new(right_x, pos.y)],
-            guide_stroke,
-        );
-        let guide_stroke = Stroke::new(3.0, color.linear_multiply((2.0 * guide_alpha).max(1.0)));
-        painter.line_segment(
-            [Pos2::new(left_x, pos.y), Pos2::new(right_x, pos.y)],
-            guide_stroke,
-        );
+        painter.circle_filled(pos, q_radius, guide_color);
+        painter.circle_stroke(pos, q_radius, Stroke::new(1.0, color.linear_multiply(0.5)));
 
-        // ドラッグ & スクロール
+        // ドラッグ移動ロジック
         if resp.dragged() {
             let delta = resp.drag_delta();
             let new_f = (band.freq.value().ln()
                 + (delta.x / rect.width()) * (20000.0f32.ln() - 20.0f32.ln()))
             .exp();
             let new_g = (band.gain.value() - (delta.y / rect.height()) * 40.0).clamp(-20.0, 20.0);
+
             setter.begin_set_parameter(&band.freq);
             setter.set_parameter(&band.freq, new_f.clamp(20.0, 20000.0));
             setter.end_set_parameter(&band.freq);
+
             setter.begin_set_parameter(&band.gain);
             setter.set_parameter(&band.gain, new_g);
             setter.end_set_parameter(&band.gain);
         }
+
+        // スクロールでQ操作
         if resp.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll != 0.0 {
@@ -329,7 +351,7 @@ impl EqualizerBox {
             }
         }
 
-        // ドット本体
+        // 8. メインの操作ドット
         painter.circle_filled(pos, 8.5, color.linear_multiply(0.9));
         painter.circle_stroke(
             pos,
@@ -344,19 +366,28 @@ impl EqualizerBox {
             ),
         );
 
-        // テキストラベル
+        // 吹き出しテキスト (座布団付き)
         let label_text = format!(
-            "{}\n{:.0}Hz\n{:.1}dB",
+            "{}\n{:.0}Hz\n{:.1}dB\nQ:{:.2}",
             label,
             band.freq.value(),
-            band.gain.value()
+            band.gain.value(),
+            q_val
         );
-        painter.text(
-            pos + egui::vec2(0.0, -28.0),
-            Align2::CENTER_BOTTOM,
-            label_text,
-            FontId::proportional(12.0),
-            Color32::WHITE.linear_multiply(if is_active { 1.0 } else { 0.6 }),
+        let font_id = FontId::proportional(11.0);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(label_text, font_id, Color32::WHITE);
+
+        let text_rect = Rect::from_center_size(
+            pos + egui::vec2(0.0, -42.0),
+            galley.size() + egui::vec2(8.0, 4.0),
         );
+        painter.rect_filled(
+            text_rect,
+            2.0,
+            Color32::from_rgba_unmultiplied(0, 0, 0, 200),
+        );
+        painter.galley(text_rect.min + egui::vec2(4.0, 2.0), galley, Color32::WHITE);
     }
 }

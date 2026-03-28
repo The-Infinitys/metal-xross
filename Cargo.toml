@@ -24,3 +24,4 @@ nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["s
 nih_plug_xtask = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 log = "0.4"
+image = "0.25.10"
