@@ -78,7 +78,6 @@ impl XrossDriveSystem {
 
         // 元の入力成分をわずかにブレンド（Gain 0での芯を残すため）
         let dry_blend = 0.3 * (1.0 - gain).max(0.0);
-        
 
         (smoothed * (1.0 - dry_blend) + input * dry_blend) * makeup
     }
