@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 pub struct XrossDistSystem {
     params: Arc<MetalXrossParams>,
-    // 状態保持（ステレオ対応）
     low_cut: Vec<f32>,
     pre_shape: Vec<f32>,
     post_lp: Vec<f32>,
@@ -22,20 +21,22 @@ impl XrossDistSystem {
         }
     }
 
-    /// ハード・クリッピング関数
-    /// 線形領域を狭くし、限界値付近で急激に「角」を立たせる
-    fn hard_clip(&self, x: f32, drive: f32) -> f32 {
-        let pushed = x * drive;
-        // 0.5を超えると急激にサチュレート
-        if pushed.abs() < 0.5 {
-            pushed
+    /// ディストーション特有の「粘り」のあるハードクリッピング
+    /// 完全に角を落とすのではなく、倍音が豊かになるポイントで非線形性を強める
+    fn dist_clip(&self, x: f32) -> f32 {
+        let abs_x = x.abs();
+        if abs_x < 0.3 {
+            // 微小信号はリニアに（音の輪郭を維持）
+            x
         } else {
-            // tanhよりもクリッピングポイントが明確なシグモイド
-            pushed.signum() * (0.5 + 0.5 * ((pushed.abs() - 0.5) * 2.0).tanh())
+            // 0.3を超えるとソフトかつ力強く圧縮
+            // tanhよりも少し「壁」を感じるシグモイド曲線
+            let sign = x.signum();
+            let saturated = 0.3 + 0.65 * ((abs_x - 0.3) * 1.5).tanh();
+            sign * saturated.min(0.95)
         }
     }
 
-    /// サンプルごとの処理ロジック
     fn process_sample(
         &mut self,
         input: f32,
@@ -45,36 +46,38 @@ impl XrossDistSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // --- 1. PRE-EQ (Style Low -> Radical Tightening) ---
-        // ディストーションは低域が濁ると致命的なため、s_lowが低いほど大胆にカット
-        let hp_coef = 0.08 + (1.0 - s_low) * 0.72;
+        // --- 1. PRE-EQ (Style Low: Tightness) ---
+        // DISTは低域の「ボフボフ」を防ぐため、s_lowが低いほど大胆にカット
+        let hp_freq = 0.05 + (1.0 - s_low).powf(1.8) * 0.3;
         let filtered = input - self.low_cut[ch];
-        self.low_cut[ch] = input * hp_coef + self.low_cut[ch] * (1.0 - hp_coef);
+        self.low_cut[ch] = input * hp_freq + self.low_cut[ch] * (1.0 - hp_freq);
 
-        // --- 2. PRE-SHAPE (Style Mid -> Mid-Range Focus) ---
-        // Style Midが高いほど、歪みの前に中域を強く盛り上げ、音を前に出す
-        let mid_focus = s_mid * 0.8;
-        let shaped = filtered + (filtered - self.pre_shape[ch]) * mid_focus;
-        self.pre_shape[ch] = filtered;
+        // --- 2. MID-FOCUS (Style Mid: Presence) ---
+        // Style Midが高いほど、歪み前の段階で中域を強調し、粘りと押し出しを強くする
+        let mid_boost = 1.0 + s_mid * 1.2;
+        let shaped = filtered * mid_boost;
 
-        // --- 3. MAIN DISTORTION STAGE (Style Mid also affects Gain) ---
-        // ディストーション用のハイゲイン設定
-        let drive_amount = gain * 70.0 + 5.0 + (s_mid * 20.0);
-        let mut x = self.hard_clip(shaped, drive_amount);
+        // --- 3. GAIN STAGE (Gain 0.0でも歪む設定) ---
+        // 基礎ゲインを 8.0 に設定。Gain 0.0でも十分なドライブ感。
+        // 最大ゲインは METAL モードの手前（約 60倍）に留める
+        let drive_amount = 8.0 + (gain * 52.0);
+        let mut x = shaped * drive_amount;
 
-        // --- 4. SECONDARY CLIP (Wave Squashing) ---
-        // 波形をさらに四角くし、サステインと倍音を稼ぐ
-        x = (x * 1.6).clamp(-1.0, 1.0) * 0.85;
+        // --- 4. MULTI-STAGE DISTORTION ---
+        // 2段階でクリップさせ、サステインを極限まで稼ぐ
+        x = self.dist_clip(x);
+        x = self.dist_clip(x * 1.4);
 
-        // --- 5. POST-FILTER (Style High -> Edge Control) ---
-        // Style Highが低いときはダークに、高いときは「ザクザク」したエッジを強調
-        let lp_coef = 0.03 + (s_high * 0.57);
-        let final_out = x * lp_coef + self.post_lp[ch] * (1.0 - lp_coef);
+        // --- 5. POST-FILTER (Style High: Edge) ---
+        // 歪みで増えた高域をStyle Highで調整。高いほど「ザクッ」とした質感に。
+        let lp_freq = 0.1 + (s_high * 0.55);
+        let final_out = x * lp_freq + self.post_lp[ch] * (1.0 - lp_freq);
         self.post_lp[ch] = final_out;
 
-        // --- 6. OUTPUT LEVEL ---
-        // 圧縮感が強いため、出力は少し控えめに調整
-        final_out * 0.6
+        // --- 6. OUTPUT MAPPING ---
+        // 強い圧縮がかかるため、出力レベルを補正
+        let makeup = 0.55 / (1.0 + gain * 0.4);
+        final_out * makeup
     }
 }
 

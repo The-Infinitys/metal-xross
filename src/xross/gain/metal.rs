@@ -6,12 +6,10 @@ use std::sync::Arc;
 
 pub struct XrossMetalSystem {
     params: Arc<MetalXrossParams>,
-    // 状態保持（ステレオ対応）
-    pre_hp: Vec<f32>,       // プリ・ハイパス（刻みの鋭さ）
-    stage1_state: Vec<f32>, // 1段目の歪み後の微調整
-    stage2_state: Vec<f32>, // 2段目の歪み後の微調整
-    dc_block: Vec<f32>,     // DCオフセット除去
-    gate_env: Vec<f32>,     // 簡易的なノイズゲート用
+    pre_hp: Vec<f32>,
+    stage1_state: Vec<f32>,
+    stage2_state: Vec<f32>,
+    dc_block: Vec<f32>,
 }
 
 impl XrossMetalSystem {
@@ -22,23 +20,22 @@ impl XrossMetalSystem {
             stage1_state: vec![0.0; 2],
             stage2_state: vec![0.0; 2],
             dc_block: vec![0.0; 2],
-            gate_env: vec![0.0; 2],
         }
     }
 
-    /// 強烈な角を作る非線形クリッパー
-    /// x: 入力, shape: 1.0で通常, 上げるほど矩形波に近づく
-    fn metal_clip(&self, x: f32, shape: f32) -> f32 {
-        let soft_limit = 0.4;
+    /// モダンメタルのための過激なクリッパー
+    /// 線形領域を極端に狭め、0.2を超えたら即座に飽和させる
+    fn metal_clip(&self, x: f32, hardness: f32) -> f32 {
+        let threshold = 0.2;
         let abs_x = x.abs();
 
-        if abs_x < soft_limit {
-            x // 線形領域
+        if abs_x < threshold {
+            x
         } else {
-            // soft_limitを超えた瞬間に強引に天井へ押し付ける
+            // 閾値を超えた瞬間にtanhで急激に潰す。hardnessを上げると矩形波に近づく。
             let sign = x.signum();
-            let excess = (abs_x - soft_limit) * shape;
-            sign * (soft_limit + (1.0 - soft_limit) * excess.tanh())
+            let excess = (abs_x - threshold) * hardness;
+            sign * (threshold + (1.0 - threshold) * excess.tanh())
         }
     }
 
@@ -51,41 +48,44 @@ impl XrossMetalSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // --- 1. RADICAL PRE-FILTER (Style Low -> Chug Tightness) ---
-        // メタルは低域が少しでも残ると音が潰れるため、s_lowが低いほど超強力にカット
-        let hp_coef = 0.15 + (1.0 - s_low).powf(2.0) * 0.7;
+        // --- 1. EXTREME PRE-FILTER (Style Low: Tightness) ---
+        // モダンメタルの命である「刻み」の鋭さを出すため、s_lowが低いほど超高域までカット
+        // 5弦・6弦の開放弦を弾いてもボタつかないタイトさを確保
+        let hp_freq = 0.15 + (1.0 - s_low).powf(1.8) * 0.45;
         let filtered = input - self.pre_hp[ch];
-        self.pre_hp[ch] = input * hp_coef + self.pre_hp[ch] * (1.0 - hp_coef);
+        self.pre_hp[ch] = input * hp_freq + self.pre_hp[ch] * (1.0 - hp_freq);
 
-        // --- 2. STAGE 1: PRIMARY GAIN (Density & Core Distortion) ---
-        // Style Midが高いほど、初段の歪みの密度を上げ、コンプレッションを強くする
-        let drive1 = gain * 60.0 + (s_mid * 40.0);
-        let mut x = self.metal_clip(filtered * drive1, 1.5 + s_mid);
+        // --- 2. PRE-GAIN & MID-SCOOP (Style Mid: Density) ---
+        // Style Midが低いほどドンシャリ(Scooped)、高いほど中域が詰まったモダンな響きに
+        let mid_impact = 0.5 + s_mid * 1.5;
+        let p_gain = (15.0 + gain * 60.0) * mid_impact;
 
-        // --- INTER-STAGE: DYNAMIC SAG ---
-        // 1段目と2段目の間で、高域の痛い部分を少し削りつつ、2段目に備える
-        x = x * 0.7 + self.stage1_state[ch] * 0.3;
+        // Stage 1: 初段で一気に歪ませる
+        let mut x = self.metal_clip(filtered * p_gain, 2.0 + s_mid);
+
+        // インターステージ・シェーピング（耳に痛い成分をわずかに平滑化）
+        x = x * 0.8 + self.stage1_state[ch] * 0.2;
         self.stage1_state[ch] = x;
 
-        // --- 3. STAGE 2: SECONDARY GAIN (Aggression & Square Wave) ---
-        // 2段目でさらにブーストし、波形を完全に四角く（矩形波に近く）する
-        let drive2 = 2.0 + gain * 3.0;
-        x = self.metal_clip(x * drive2, 2.0);
+        // --- 3. STAGE 2: FINAL SATURATION ---
+        // さらにゲインを重ねて波形を完全に四角くする
+        let s2_gain = 2.0 + gain * 2.0;
+        x = self.metal_clip(x * s2_gain, 3.0);
 
-        // --- 4. POST-FILTER (Style High -> Razor Edge) ---
-        // Style Highで「ザクザク」感を調整。0.5以上で耳を刺すような鋭いエッジが出る
-        let lp_coef = 0.02 + (s_high.powf(1.5) * 0.4);
-        let bright_out = x * lp_coef + self.stage2_state[ch] * (1.0 - lp_coef);
+        // --- 4. POST-FILTER (Style High: Razor Edge) ---
+        // メタル特有の「シュワシュワ」した高域をコントロール
+        // Style Highが高いほど、高域を突き刺すようなエッジに変更
+        let lp_freq = 0.05 + (s_high.powf(1.2) * 0.45);
+        let bright_out = x * lp_freq + self.stage2_state[ch] * (1.0 - lp_freq);
         self.stage2_state[ch] = bright_out;
-        x = bright_out;
 
-        // --- 5. DC BLOCKER & NOISE GATE ---
-        // 深い歪みはノイズが乗りやすいため、超簡易的なゲートを通す
-        let out = x - self.dc_block[ch] + (0.99 * self.dc_block[ch]);
-        self.dc_block[ch] = x;
+        // --- 5. DC BLOCKER & FINAL MAKEUP ---
+        // バイアスが偏りやすいため、DC成分を除去
+        let out = bright_out - self.dc_block[ch] + (0.995 * self.dc_block[ch]);
+        self.dc_block[ch] = bright_out;
 
-        // 出力レベル調整（メタルは常に最大音量に近いため、補正値を強めに）
-        out * 0.6
+        // メタルは常に音圧が最大のため、ゲイン量に関わらず一定の出力を維持
+        out * 0.5
     }
 }
 
@@ -101,7 +101,6 @@ impl XrossGainProcessor for XrossMetalSystem {
         self.stage1_state = vec![0.0; num_channels];
         self.stage2_state = vec![0.0; num_channels];
         self.dc_block = vec![0.0; num_channels];
-        self.gate_env = vec![0.0; num_channels];
         true
     }
 

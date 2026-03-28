@@ -6,10 +6,9 @@ use std::sync::Arc;
 
 pub struct XrossDriveSystem {
     params: Arc<MetalXrossParams>,
-    // 状態保持（ステレオ対応）
     low_cut: Vec<f32>,
-    mid_boost: Vec<f32>,
-    prev_sample: Vec<f32>,
+    mid_focus: Vec<f32>,
+    lpf_state: Vec<f32>,
 }
 
 impl XrossDriveSystem {
@@ -17,24 +16,26 @@ impl XrossDriveSystem {
         Self {
             params,
             low_cut: vec![0.0; 2],
-            mid_boost: vec![0.0; 2],
-            prev_sample: vec![0.0; 2],
+            mid_focus: vec![0.0; 2],
+            lpf_state: vec![0.0; 2],
         }
     }
 
-    /// オーバードライブ特有の対称的なソフトクリッピング
-    /// 3次高調波を生成し、温かみのある太い歪みを作る
-    fn soft_clip(&self, x: f32) -> f32 {
+    /// オーバードライブの心臓部：粘りを生む非線形関数
+    /// 多項式ソフトクリップに少しの「肩」を持たせ、サステインを稼ぐ
+    fn drive_clip(&self, x: f32) -> f32 {
         let abs_x = x.abs();
-        if abs_x > 1.0 {
-            x.signum()
+        if abs_x < 0.5 {
+            x // リニア領域
+        } else if abs_x < 1.0 {
+            // 0.5~1.0の間で滑らかに飽和（粘り）
+            x.signum() * (abs_x - 0.5 * (abs_x - 0.5).powi(2) / 0.5)
         } else {
-            // 1.5*x - 0.5*x^3 の多項式近似
-            1.5 * x - 0.5 * x * x * x
+            // 限界値付近でのコンプレッション感
+            x.signum() * 0.875
         }
     }
 
-    /// サンプルごとの処理
     fn process_sample(
         &mut self,
         input: f32,
@@ -44,35 +45,42 @@ impl XrossDriveSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // --- 1. PRE-FILTER (Style Low -> Tightness & Mid-Push) ---
-        // Style Lowが低いほどローカットを強め、中域をタイトに押し出す (TS系のような挙動)
-        let tight_amount = (1.0 - s_low).powf(1.2);
-        let hp_coef = 0.05 + (tight_amount * 0.4);
+        // --- 1. MID-PUSH & LOW-CUT (Driveの骨格) ---
+        // Style Lowが高いほど低域を残し、低いほどタイトに（中域にフォーカス）
+        let hp_freq = 0.05 + (1.0 - s_low).powf(1.5) * 0.25;
+        let pre_filtered = input - self.low_cut[ch];
+        self.low_cut[ch] = input * hp_freq + self.low_cut[ch] * (1.0 - hp_freq);
 
-        let filtered = input - self.low_cut[ch];
-        self.low_cut[ch] = input * hp_coef + self.low_cut[ch] * (1.0 - hp_coef);
+        // 中域の「粘り」を出すためのバンドパス的なブースト
+        let mid_boost = (s_mid + 0.5) * 1.5;
+        let focused = pre_filtered * mid_boost;
 
-        // --- 2. DRIVE STAGE (Style Mid -> Saturation Density) ---
-        // Midを上げるとクリッパーへの突っ込みが強くなり、歪みの粘り（サチュレーション）が増す
-        let drive_boost = 1.0 + (s_mid * 0.8);
-        let drive_amount = gain * 30.0 * drive_boost + 1.2;
+        // --- 2. DYNAMIC GAIN (サステインの演出) ---
+        // Gain 0でも1.2倍程度の内部ゲインを持たせ、サチュレーションの入り口を作る
+        // Gainを上げると30倍近くまで跳ね上がり、ドライブ感が増す
+        let internal_drive = 1.2 + gain * 25.0;
+        let mut x = focused * internal_drive;
 
-        let mut x = filtered * drive_amount;
+        // --- 3. SOFT CLIPPING STAGES ---
+        // 2段階でクリップさせることで、より複雑な倍音とサステインを生む
+        x = self.drive_clip(x);
+        x = self.drive_clip(x * 1.5); // 2段目の突っ込み
 
-        // --- 3. SYMMETRIC SOFT CLIPPING ---
-        x = self.soft_clip(x);
+        // --- 4. TONE & PRESENCE (Style High) ---
+        // 高域の抜けを調整。Style Highが高いほどエッジが立ち、低いとクリーミーに
+        let lp_freq = 0.15 + s_high * 0.6;
+        let smoothed = x * lp_freq + self.lpf_state[ch] * (1.0 - lp_freq);
+        self.lpf_state[ch] = smoothed;
 
-        // --- 4. TONE CONTROL (Style High -> Brightness) ---
-        // 高域の抜けを調整。Style Highが低いときはマイルドな高域カット、高いときはプレゼンスを強調
-        let bright_val = x - self.mid_boost[ch];
-        let lp_weight = 0.1 + (1.0 - s_high) * 0.6;
+        // --- 5. MAKEUP & OUTPUT ---
+        // 歪みによる音量の増加を抑えつつ、中域の密度を維持
+        let makeup = 0.7 / (1.0 + gain * 1.2);
 
-        self.mid_boost[ch] = x * lp_weight + self.mid_boost[ch] * (1.0 - lp_weight);
-        x += bright_val * s_high;
+        // 元の入力成分をわずかにブレンド（Gain 0での芯を残すため）
+        let dry_blend = 0.3 * (1.0 - gain).max(0.0);
+        let out = (smoothed * (1.0 - dry_blend) + input * dry_blend) * makeup;
 
-        // --- 5. OUTPUT GAIN ---
-        // 歪ませてもレベルが一定になるよう補正
-        x * (0.6 / (1.0 + gain * 0.5))
+        out
     }
 }
 
@@ -85,15 +93,13 @@ impl XrossGainProcessor for XrossDriveSystem {
     ) -> bool {
         let num_channels = layout.main_output_channels.map(|n| n.get()).unwrap_or(2) as usize;
         self.low_cut = vec![0.0; num_channels];
-        self.mid_boost = vec![0.0; num_channels];
-        self.prev_sample = vec![0.0; num_channels];
+        self.mid_focus = vec![0.0; num_channels];
+        self.lpf_state = vec![0.0; num_channels];
         true
     }
 
     fn process_channel(&mut self, slice: &mut [f32], ch_idx: usize) {
         let gain = self.params.general.gain.value();
-
-        // Styleセクションの値を抽出
         let s_low = self.params.style.low.value();
         let s_mid = self.params.style.mid.value();
         let s_high = self.params.style.high.value();
