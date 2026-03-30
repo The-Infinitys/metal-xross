@@ -6,39 +6,79 @@ use std::sync::Arc;
 
 pub struct XrossMetalSystem {
     params: Arc<MetalXrossParams>,
+    ap_state: Vec<f32>,
     pre_hp: Vec<f32>,
-    stage1_state: Vec<f32>,
-    stage2_state: Vec<f32>,
+    stage_states: Vec<[f32; 3]>, // 多段処理用
+    slew_state: Vec<f32>,        // スルーレート制御用
     dc_block: Vec<f32>,
+    prev_input: Vec<f32>, // アップサンプリング補間用
 }
 
 impl XrossMetalSystem {
     pub fn new(params: Arc<MetalXrossParams>) -> Self {
         Self {
             params,
+            ap_state: vec![0.0; 2],
             pre_hp: vec![0.0; 2],
-            stage1_state: vec![0.0; 2],
-            stage2_state: vec![0.0; 2],
+            stage_states: vec![[0.0; 3]; 2],
+            slew_state: vec![0.0; 2],
             dc_block: vec![0.0; 2],
+            prev_input: vec![0.0; 2],
         }
     }
 
-    /// モダンメタルのための過激なクリッパー
-    /// 線形領域を極端に狭め、0.2を超えたら即座に飽和させる
-    fn metal_clip(&self, x: f32, hardness: f32) -> f32 {
-        let threshold = 0.2;
-        let abs_x = x.abs();
+    fn drive_core(
+        &mut self,
+        input: f32,
+        gain: f32,
+        s_low: f32,
+        s_mid: f32,
+        s_high: f32,
+        ch: usize,
+    ) -> f32 {
+        // 1. TIGHTENING & BRIGHTENING (Pre-Filtering)
+        // 歪みに入る前に高域を少し持ち上げる（Style Highに連動）
+        let brightness = s_high * 0.4;
+        let pre_emphasized = input + (input - self.pre_hp[ch]) * brightness;
 
-        if abs_x < threshold {
-            x
-        } else {
-            // 閾値を超えた瞬間にtanhで急激に潰す。hardnessを上げると矩形波に近づく。
-            let sign = x.signum();
-            let excess = (abs_x - threshold) * hardness;
-            sign * (threshold + (1.0 - threshold) * excess.tanh())
-        }
+        // 低域カット（s_low 0.0で超絶タイト、1.0でドロドロ）
+        let hp_freq = 0.15 + (1.0 - s_low).powf(1.5) * 0.45;
+        let filtered = pre_emphasized - self.pre_hp[ch];
+        self.pre_hp[ch] = pre_emphasized * hp_freq + self.pre_hp[ch] * (1.0 - hp_freq);
+
+        // 2. HARDER CLIPPING (より鋭いエッジ)
+        let total_gain = 30.0 + gain * 140.0; // ゲイン上限をさらにアップ
+        let mut x = filtered * total_gain;
+
+        // 非対称性を減らし、矩形波（四角）に近づけることで「芯」を出す
+        // 0.05までリニア領域を狭める
+        let metal_shaper = |val: f32, h: f32| {
+            let abs_v = val.abs();
+            if abs_v < 0.05 {
+                val
+            } else {
+                val.signum() * (0.05 + (1.0 - 0.05) * (1.0 - (-h * (abs_v - 0.05)).exp()))
+            }
+        };
+
+        x = metal_shaper(x, 2.0 + s_mid); // Stage 1
+        x = metal_shaper(x * 2.0, 6.0); // Stage 2: ここで完全に壁を作る
+
+        // 3. SLEW RATE (エッジの鋭さを解放)
+        // 丸まっていた原因：max_step を大幅に引き上げ、高域をスルーさせる
+        let max_step = 0.2 + s_high * 0.8; // 以前より4倍近く速い変化を許容
+        let diff = x - self.slew_state[ch];
+        self.slew_state[ch] += diff.clamp(-max_step, max_step);
+        x = self.slew_state[ch];
+
+        // 4. POST-FILTER (Razor Edge)
+        // Style Highが最大なら、ほぼフィルタを通さない（全開）にする
+        let lp_freq = 0.1 + (s_high.powf(1.2) * 0.85);
+        let out = x * lp_freq + self.stage_states[ch][1] * (1.0 - lp_freq);
+        self.stage_states[ch][1] = out;
+
+        out
     }
-
     fn process_sample(
         &mut self,
         input: f32,
@@ -48,44 +88,27 @@ impl XrossMetalSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // --- 1. EXTREME PRE-FILTER (Style Low: Tightness) ---
-        // モダンメタルの命である「刻み」の鋭さを出すため、s_lowが低いほど超高域までカット
-        // 5弦・6弦の開放弦を弾いてもボタつかないタイトさを確保
-        let hp_freq = 0.15 + (1.0 - s_low).powf(1.8) * 0.45;
-        let filtered = input - self.pre_hp[ch];
-        self.pre_hp[ch] = input * hp_freq + self.pre_hp[ch] * (1.0 - hp_freq);
+        // 高ゲイン時はエイリアシングノイズを避けるため4倍、低ゲインでも2倍OS
+        let os_factor = if gain > 0.6 { 4 } else { 2 };
 
-        // --- 2. PRE-GAIN & MID-SCOOP (Style Mid: Density) ---
-        // Style Midが低いほどドンシャリ(Scooped)、高いほど中域が詰まったモダンな響きに
-        let mid_impact = 0.5 + s_mid * 1.5;
-        let p_gain = (15.0 + gain * 60.0) * mid_impact;
+        let mut output = 0.0;
+        let step = (input - self.prev_input[ch]) / os_factor as f32;
+        let mut current_input = self.prev_input[ch];
 
-        // Stage 1: 初段で一気に歪ませる
-        let mut x = self.metal_clip(filtered * p_gain, 2.0 + s_mid);
+        for _ in 0..os_factor {
+            current_input += step; // 線形補間によるアップサンプリング
+            output += self.drive_core(current_input, gain, s_low, s_mid, s_high, ch);
+        }
 
-        // インターステージ・シェーピング（耳に痛い成分をわずかに平滑化）
-        x = x * 0.8 + self.stage1_state[ch] * 0.2;
-        self.stage1_state[ch] = x;
+        self.prev_input[ch] = input;
+        output /= os_factor as f32;
 
-        // --- 3. STAGE 2: FINAL SATURATION ---
-        // さらにゲインを重ねて波形を完全に四角くする
-        let s2_gain = 2.0 + gain * 2.0;
-        x = self.metal_clip(x * s2_gain, 3.0);
+        // DC Block (低周波の揺れをカット)
+        let final_out = output - self.dc_block[ch] + (0.995 * self.dc_block[ch]);
+        self.dc_block[ch] = output;
 
-        // --- 4. POST-FILTER (Style High: Razor Edge) ---
-        // メタル特有の「シュワシュワ」した高域をコントロール
-        // Style Highが高いほど、高域を突き刺すようなエッジに変更
-        let lp_freq = 0.05 + (s_high.powf(1.2) * 0.45);
-        let bright_out = x * lp_freq + self.stage2_state[ch] * (1.0 - lp_freq);
-        self.stage2_state[ch] = bright_out;
-
-        // --- 5. DC BLOCKER & FINAL MAKEUP ---
-        // バイアスが偏りやすいため、DC成分を除去
-        let out = bright_out - self.dc_block[ch] + (0.995 * self.dc_block[ch]);
-        self.dc_block[ch] = bright_out;
-
-        // メタルは常に音圧が最大のため、ゲイン量に関わらず一定の出力を維持
-        out * 0.5
+        // 最終メイクアップ: 圧倒的な音圧だが歪みの芯を残す
+        final_out * 0.45
     }
 }
 
@@ -97,21 +120,23 @@ impl XrossGainProcessor for XrossMetalSystem {
         _context: &mut impl InitContext<MetalXross>,
     ) -> bool {
         let num_channels = layout.main_output_channels.map(|n| n.get()).unwrap_or(2) as usize;
+        self.ap_state = vec![0.0; num_channels];
         self.pre_hp = vec![0.0; num_channels];
-        self.stage1_state = vec![0.0; num_channels];
-        self.stage2_state = vec![0.0; num_channels];
+        self.stage_states = vec![[0.0; 3]; num_channels];
+        self.slew_state = vec![0.0; num_channels];
         self.dc_block = vec![0.0; num_channels];
+        self.prev_input = vec![0.0; num_channels];
         true
     }
 
     fn process_channel(&mut self, slice: &mut [f32], ch_idx: usize) {
-        let gain = self.params.general.gain.value();
-        let s_low = self.params.style.low.value();
-        let s_mid = self.params.style.mid.value();
-        let s_high = self.params.style.high.value();
+        let g = self.params.general.gain.value();
+        let sl = self.params.style.low.value();
+        let sm = self.params.style.mid.value();
+        let sh = self.params.style.high.value();
 
         for sample in slice {
-            *sample = self.process_sample(*sample, gain, s_low, s_mid, s_high, ch_idx);
+            *sample = self.process_sample(*sample, g, sl, sm, sh, ch_idx);
         }
     }
 }

@@ -61,9 +61,23 @@ impl MetalXross {
         buffer_config: &BufferConfig,
         context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.noise_gate.initialize(buffer_config.sample_rate);
-        self.level.initialize(buffer_config.sample_rate);
+        let sample_rate = buffer_config.sample_rate;
 
+        // 出力チャンネル数を取得（デフォルトはステレオの2）
+        let num_channels = audio_io_layout
+            .main_output_channels
+            .map(|n| n.get())
+            .unwrap_or(2) as usize;
+
+        // 各システムの初期化
+        // 1. ノイズゲート
+        self.noise_gate.initialize(sample_rate);
+
+        // 2. レベル管理システム（サンプルレートとチャンネル数を渡す）
+        self.level.initialize(sample_rate, num_channels);
+
+        // 3. 歪みシステム（内部でチャンネルごとのステートを確保するはず）
+        // gain.initialize が bool を返すので、その結果をそのまま利用
         self.gain
             .initialize(audio_io_layout, buffer_config, context)
     }

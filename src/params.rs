@@ -28,10 +28,12 @@ pub struct GeneralParams {
 }
 impl Default for GeneralParams {
     fn default() -> Self {
+        let gain_string_func = |v: f32| format!("{:.2}", v);
         Self {
-            input: LevelParams::default(),
-            gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            output: LevelParams::default(),
+            input: LevelParams::new(1.0, 1.0, 2.0),
+            gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(gain_string_func)),
+            output: LevelParams::new(1.0, 0.5, 1.0),
         }
     }
 }
@@ -42,8 +44,18 @@ pub struct LevelParams {
     #[id = "gain"]
     pub gain: FloatParam,
 }
-impl Default for LevelParams {
-    fn default() -> Self {
+impl LevelParams {
+    pub fn new(default_gain: f32, default_limit: f32, max_limit: f32) -> Self {
+        let db_string_func = Arc::new(|v: f32| {
+            if v <= 0.00001 {
+                "-inf".to_string()
+            } else {
+                format!("{:.1}", 20.0 * v.log10())
+            }
+        });
+
+        // --- Gainの範囲設定 ---
+        // 0.0倍(-inf)から4.0倍(+12dB)まで。中心を1.0(0dB)に据える
         let gain_range = FloatRange::SymmetricalSkewed {
             min: 0.0,
             max: 4.0,
@@ -51,15 +63,21 @@ impl Default for LevelParams {
             center: 1.0,
         };
 
+        // --- Limitの範囲設定 ---
+        // 要件: default_limit がノブの真ん中（center）に来るように設定
+        // メタル用途なら min は 0.01 (-40dB) 程度、max は max_limit (例: 1.0)
+        let limit_range = FloatRange::SymmetricalSkewed {
+            min: 0.001, // 完全な0だとlogが壊れるため、-60dB程度を最小値に
+            max: max_limit,
+            center: default_limit,
+            factor: FloatRange::skew_factor((default_limit.ln() / 0.5_f32.ln()).abs().max(0.1)),
+        };
+
         Self {
-            limit: FloatParam::new("Limit", 0.8, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            gain: FloatParam::new("Gain", 1.0, gain_range).with_value_to_string(Arc::new(|v| {
-                if v <= 0.0 {
-                    "-inf".to_string()
-                } else {
-                    format!("{:.1}", 20.0 * v.log10())
-                }
-            })),
+            limit: FloatParam::new("Limit", default_limit, limit_range)
+                .with_value_to_string(db_string_func.clone()),
+            gain: FloatParam::new("Gain", default_gain, gain_range)
+                .with_value_to_string(db_string_func),
         }
     }
 }
@@ -77,6 +95,8 @@ pub struct StyleParams {
 
 impl Default for StyleParams {
     fn default() -> Self {
+        let style_string_func = |v: f32| format!("{:.2}", v);
+
         Self {
             kind: FloatParam::new("Style", 3.0, FloatRange::Linear { min: 0.0, max: 3.0 })
                 .with_value_to_string(Arc::new(|v| {
@@ -91,9 +111,12 @@ impl Default for StyleParams {
                     }
                     .to_string()
                 })),
-            low: FloatParam::new("Style Low", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            mid: FloatParam::new("Style Mid", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            high: FloatParam::new("Style High", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            low: FloatParam::new("Style Low", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(style_string_func)),
+            mid: FloatParam::new("Style Mid", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(style_string_func)),
+            high: FloatParam::new("Style High", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(style_string_func)),
         }
     }
 }
