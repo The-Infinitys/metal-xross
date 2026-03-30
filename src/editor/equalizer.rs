@@ -85,97 +85,101 @@ pub struct EqualizerBox;
 
 impl EqualizerBox {
     pub fn draw(ui: &mut egui::Ui, params: &Arc<MetalXrossParams>, setter: &ParamSetter) {
-        let label_w = 35.0;
-        let bottom_h = 20.0;
-        let margin_r = 10.0;
-
+        let label_w = 30.0;
+        let bottom_h = 15.0;
         let full_rect = ui.available_rect_before_wrap();
-        let graph_rect = Rect::from_min_size(
-            full_rect.min + egui::vec2(label_w, 10.0),
-            egui::vec2(
-                (full_rect.width() - label_w - margin_r).max(100.0),
-                (full_rect.height() - bottom_h - 20.0).max(100.0),
-            ),
+
+        // 1. 全域を背景色で塗りつぶす
+        ui.painter()
+            .rect_filled(full_rect, 4.0, Color32::from_black_alpha(200));
+
+        let graph_rect = Rect::from_min_max(
+            full_rect.min + egui::vec2(label_w, 5.0),
+            full_rect.max - egui::vec2(10.0, bottom_h),
         );
 
-        let painter = ui.painter();
+        // 領域外クリックでポップアップを閉じる
+        let bg_resp = ui.interact(full_rect, ui.id().with("bg"), egui::Sense::click());
+        if bg_resp.clicked() {
+            ui.memory_mut(|mem| mem.close_popup());
+        }
 
-        // 1. 背景のベース描画（0,0,0,128を重ねる）
-        painter.rect_filled(
-            graph_rect,
-            2.0,
-            Color32::from_rgba_unmultiplied(0, 0, 0, 150),
-        );
+        let painter = ui.painter().with_clip_rect(graph_rect);
+        let stroke_main = Stroke::new(1.0, Color32::from_gray(80));
+        let stroke_sub = Stroke::new(0.5, Color32::from_gray(40));
+        let font_grid = FontId::proportional(9.0);
 
-        // ラベル背面の座布団（視認性向上）
-        let left_strip = Rect::from_min_max(
-            Pos2::new(full_rect.left(), graph_rect.top()),
-            Pos2::new(graph_rect.left(), graph_rect.bottom()),
-        );
-        let bottom_strip = Rect::from_min_max(
-            Pos2::new(graph_rect.left(), graph_rect.bottom()),
-            Pos2::new(graph_rect.right(), full_rect.bottom()),
-        );
-        painter.rect_filled(
-            left_strip,
-            0.0,
-            Color32::from_rgba_unmultiplied(0, 0, 0, 180),
-        );
-        painter.rect_filled(
-            bottom_strip,
-            0.0,
-            Color32::from_rgba_unmultiplied(0, 0, 0, 180),
-        );
-
-        let stroke_grid = Stroke::new(1.0, Color32::from_gray(60));
-        let font_grid = FontId::proportional(10.0);
-
-        // 2. グリッドとラベル
+        // 2. 垂直グリッド (dB)
         for db in [-18, -12, -6, 0, 6, 12, 18] {
-            let y_norm = 1.0 - (db as f32 + 20.0) / 40.0;
-            let y = graph_rect.top() + y_norm * graph_rect.height();
+            let y = graph_rect.top() + (1.0 - (db as f32 + 20.0) / 40.0) * graph_rect.height();
             painter.line_segment(
                 [
                     Pos2::new(graph_rect.left(), y),
                     Pos2::new(graph_rect.right(), y),
                 ],
-                stroke_grid,
+                stroke_sub,
             );
-            painter.text(
-                Pos2::new(graph_rect.left() - 5.0, y),
+            ui.painter().text(
+                Pos2::new(graph_rect.left() - 4.0, y),
                 Align2::RIGHT_CENTER,
                 db.to_string(),
                 font_grid.clone(),
-                Color32::WHITE,
+                Color32::GRAY,
             );
         }
 
-        let f_points = [50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0];
-        for &f in &f_points {
+        // 3. 水平グリッド (Frequency)
+        let main_freqs = [
+            20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
+        ];
+        for &f in &main_freqs {
             let x = graph_rect.left() + freq_to_norm(f) * graph_rect.width();
             painter.line_segment(
                 [
                     Pos2::new(x, graph_rect.top()),
                     Pos2::new(x, graph_rect.bottom()),
                 ],
-                stroke_grid,
+                stroke_main,
             );
+
+            let multiplier = if f < 1000.0 {
+                10.0
+            } else if f < 10000.0 {
+                100.0
+            } else {
+                1000.0
+            };
+            if f < 20000.0 {
+                for i in 2..10 {
+                    let sub_f = (f / multiplier * multiplier) * i as f32;
+                    if sub_f > f && sub_f < *main_freqs.iter().find(|&&m| m > f).unwrap_or(&20001.0)
+                    {
+                        let sub_x = graph_rect.left() + freq_to_norm(sub_f) * graph_rect.width();
+                        painter.line_segment(
+                            [
+                                Pos2::new(sub_x, graph_rect.top()),
+                                Pos2::new(sub_x, graph_rect.bottom()),
+                            ],
+                            stroke_sub,
+                        );
+                    }
+                }
+            }
             let txt = if f >= 1000.0 {
                 format!("{:.0}k", f / 1000.0)
             } else {
                 f.to_string()
             };
-            painter.text(
-                Pos2::new(x, graph_rect.bottom() + 10.0),
+            ui.painter().text(
+                Pos2::new(x, graph_rect.bottom() + 8.0),
                 Align2::CENTER_CENTER,
                 txt,
                 font_grid.clone(),
-                Color32::WHITE,
+                Color32::GRAY,
             );
         }
 
-        // 3. EQカーブ描画
-        let curve_painter = painter.with_clip_rect(graph_rect);
+        // 4. EQ合成カーブ
         let steps = (graph_rect.width() as usize / 2).max(120);
         let points: Vec<Pos2> = (0..=steps)
             .map(|i| {
@@ -191,12 +195,12 @@ impl EqualizerBox {
                 )
             })
             .collect();
-        curve_painter.add(egui::Shape::line(
+        painter.add(egui::Shape::line(
             points,
-            Stroke::new(2.5, Color32::from_rgb(0, 255, 255)),
+            Stroke::new(2.0, Color32::from_rgb(0, 255, 255)),
         ));
 
-        // 4. バンド描画
+        // 5. 各バンドの操作点
         Self::draw_band(
             ui,
             graph_rect,
@@ -233,21 +237,20 @@ impl EqualizerBox {
         color: Color32,
         label: &str,
     ) {
-        let x_norm = freq_to_norm(band.freq.value());
-        let y_norm = 1.0 - (band.gain.value() + 20.0) / 40.0;
         let pos = Pos2::new(
-            (rect.left() + x_norm * rect.width()).clamp(rect.left(), rect.right()),
-            (rect.top() + y_norm * rect.height()).clamp(rect.top(), rect.bottom()),
+            rect.left() + freq_to_norm(band.freq.value()) * rect.width(),
+            rect.top() + (1.0 - (band.gain.value() + 20.0) / 40.0) * rect.height(),
         );
 
         let id = ui.make_persistent_id(label);
         let popup_id = id.with("popup");
         let resp = ui.interact(
-            Rect::from_center_size(pos, egui::vec2(30.0, 30.0)),
+            Rect::from_center_size(pos, egui::vec2(16.0, 16.0)),
             id,
             egui::Sense::click_and_drag(),
         );
 
+        // インタラクションロジック
         if resp.double_clicked() {
             for p in [&band.freq, &band.gain, &band.q] {
                 setter.begin_set_parameter(p);
@@ -275,100 +278,89 @@ impl EqualizerBox {
         if resp.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll != 0.0 {
-                let new_q = (band.q.value() + scroll / 250.0).clamp(0.1, 10.0);
+                let new_q = (band.q.value() + scroll / 500.0).clamp(0.1, 10.0);
                 setter.begin_set_parameter(&band.q);
                 setter.set_parameter(&band.q, new_q);
                 setter.end_set_parameter(&band.q);
             }
         }
 
+        // 数値入力ポップアップ
         if ui.memory(|mem| mem.is_popup_open(popup_id)) {
             egui::Area::new(popup_id)
                 .order(egui::Order::Foreground)
-                .fixed_pos(pos + egui::vec2(15.0, -40.0))
+                .fixed_pos(pos + egui::vec2(10.0, 10.0))
                 .show(ui.ctx(), |ui| {
                     egui::Frame::window(ui.style())
-                        .fill(Color32::from_rgba_unmultiplied(20, 20, 25, 250))
+                        .fill(Color32::from_black_alpha(240))
                         .stroke(Stroke::new(1.0, color))
                         .show(ui, |ui| {
-                            ui.set_width(120.0);
-                            ui.vertical(|ui| {
-                                ui.label(egui::RichText::new(label).color(color).strong());
-                                let p_data = [
-                                    (&band.freq, "F", 20.0..=20000.0, 1.0, "Hz"),
-                                    (&band.gain, "G", -20.0..=20.0, 0.1, "dB"),
-                                    (&band.q, "Q", 0.1..=10.0, 0.01, ""),
-                                ];
-                                for (p, l, r, s, suf) in p_data {
-                                    ui.horizontal(|ui| {
-                                        ui.label(format!("{}:", l));
-                                        let mut v = p.value();
-                                        if ui
-                                            .add(
-                                                egui::DragValue::new(&mut v)
-                                                    .suffix(suf)
-                                                    .range(r)
-                                                    .speed(s),
-                                            )
-                                            .changed()
-                                        {
-                                            setter.begin_set_parameter(p);
-                                            setter.set_parameter(p, v);
-                                            setter.end_set_parameter(p);
-                                        }
-                                    });
-                                }
-                            });
+                            ui.set_width(100.0);
+                            let p_data = [
+                                (&band.freq, "F", 20.0..=20000.0, 1.0, "Hz"),
+                                (&band.gain, "G", -20.0..=20.0, 0.1, "dB"),
+                                (&band.q, "Q", 0.1..=10.0, 0.01, ""),
+                            ];
+                            for (p, l, r, s, suf) in p_data {
+                                ui.horizontal(|ui| {
+                                    ui.small(l);
+                                    let mut v = p.value();
+                                    if ui
+                                        .add(
+                                            egui::DragValue::new(&mut v)
+                                                .suffix(suf)
+                                                .range(r)
+                                                .speed(s),
+                                        )
+                                        .changed()
+                                    {
+                                        setter.begin_set_parameter(p);
+                                        setter.set_parameter(p, v);
+                                        setter.end_set_parameter(p);
+                                    }
+                                });
+                            }
                         });
                 });
         }
 
+        let painter = ui.painter().with_clip_rect(rect);
         let is_active =
             resp.hovered() || resp.dragged() || ui.memory(|mem| mem.is_popup_open(popup_id));
-        let painter = ui.painter().with_clip_rect(rect);
 
-        // Qガイド描画
-        let q_val = band.q.value();
-        let q_radius = ((rect.width() * 0.1) / q_val.sqrt()).clamp(10.0, rect.width() / 4.0);
-        painter.circle_filled(
-            pos,
-            q_radius,
-            color.linear_multiply(if is_active { 0.2 } else { 0.05 }),
-        );
-        painter.circle_stroke(pos, q_radius, Stroke::new(1.0, color.linear_multiply(0.4)));
+        // --- 描画レイヤー ---
 
-        // メイン点
-        painter.circle_filled(pos, 8.0, color);
-        painter.circle_stroke(
-            pos,
-            8.0,
-            Stroke::new(
-                2.0,
-                if is_active {
-                    Color32::WHITE
-                } else {
-                    Color32::BLACK
-                },
-            ),
-        );
+        // 1. Qガイド（円の外側の薄い輪）
+        let q_radius =
+            ((rect.width() * 0.08) / band.q.value().sqrt()).clamp(8.0, rect.width() / 4.0);
+        painter.circle_stroke(pos, q_radius, Stroke::new(0.5, color.linear_multiply(0.3)));
 
+        // 2. メインドット
+        painter.circle_filled(pos, 5.0, if is_active { Color32::WHITE } else { color });
+        if is_active {
+            painter.circle_stroke(pos, 10.0, Stroke::new(1.0, color));
+        }
+
+        // 3. テキスト表示（ホバーまたはドラッグ中に表示）
         if is_active && !ui.memory(|mem| mem.is_popup_open(popup_id)) {
             let label_text = format!(
-                "{}\n{:.0}Hz\n{:.1}dB\nQ:{:.2}",
+                "{}\n{:.0}Hz\n{:.1}dB",
                 label,
                 band.freq.value(),
-                band.gain.value(),
-                q_val
+                band.gain.value()
             );
-            let galley =
-                ui.painter()
-                    .layout_no_wrap(label_text, FontId::proportional(11.0), Color32::WHITE);
-            let text_rect = Rect::from_center_size(
-                pos + egui::vec2(0.0, -45.0),
-                galley.size() + egui::vec2(8.0, 4.0),
-            );
+            let font = FontId::proportional(10.0);
+            let galley = ui
+                .painter()
+                .layout_no_wrap(label_text, font, Color32::WHITE);
+
+            // テキストの位置（ドットの少し上）
+            let text_pos = pos + egui::vec2(0.0, -35.0);
+            let text_rect = Rect::from_center_size(text_pos, galley.size() + egui::vec2(8.0, 4.0));
+
+            // テキスト背面の背景（視認性確保）
             ui.painter()
-                .rect_filled(text_rect, 2.0, Color32::from_black_alpha(200));
+                .rect_filled(text_rect, 2.0, Color32::from_black_alpha(180));
             ui.painter()
                 .galley(text_rect.min + egui::vec2(4.0, 2.0), galley, Color32::WHITE);
         }

@@ -17,7 +17,6 @@ impl<'a> LinearSlider<'a> {
         }
     }
 }
-
 impl<'a> egui::Widget for LinearSlider<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let desired_size = egui::vec2(120.0, 24.0);
@@ -25,11 +24,10 @@ impl<'a> egui::Widget for LinearSlider<'a> {
 
         let is_vertical = rect.height() > rect.width();
 
-        // --- 1. インタラクション ---
+        // --- 1. インタラクション (変更なし) ---
         if response.drag_started() {
             self.setter.begin_set_parameter(self.param);
         }
-
         if response.dragged() {
             let val = self.param.unmodulated_normalized_value();
             let delta = if is_vertical {
@@ -37,17 +35,14 @@ impl<'a> egui::Widget for LinearSlider<'a> {
             } else {
                 response.drag_delta().x / rect.width()
             };
-
             if delta != 0.0 {
                 let new_val = (val + delta).clamp(0.0, 1.0);
                 self.setter.set_parameter_normalized(self.param, new_val);
             }
         }
-
         if response.drag_stopped() {
             self.setter.end_set_parameter(self.param);
         }
-
         if response.double_clicked() {
             self.setter.begin_set_parameter(self.param);
             self.setter
@@ -61,17 +56,9 @@ impl<'a> egui::Widget for LinearSlider<'a> {
             let visual_val = self.param.unmodulated_normalized_value();
 
             // 背景（溝）
-            painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(10, 10, 10));
+            painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(5, 5, 5));
 
-            // 引数エラーの修正: 第4引数に StrokeKind::Inside を追加
-            painter.rect_stroke(
-                rect,
-                2.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(50)),
-                egui::StrokeKind::Inside,
-            );
-
-            // フィル（進捗バー）
+            // 進捗バー（フィル）
             let fill_rect = if is_vertical {
                 let y_pos = rect.bottom() - (visual_val * rect.height());
                 egui::Rect::from_min_max(egui::pos2(rect.left(), y_pos), rect.right_bottom())
@@ -79,50 +66,71 @@ impl<'a> egui::Widget for LinearSlider<'a> {
                 let x_pos = rect.left() + (visual_val * rect.width());
                 egui::Rect::from_min_max(rect.left_top(), egui::pos2(x_pos, rect.bottom()))
             };
-            painter.rect_filled(fill_rect.shrink(1.0), 1.0, self.color.linear_multiply(0.4));
 
-            // ハンドル（つまみ）
-            let (handle_rect, line_start, line_end) = if is_vertical {
+            // バーの色を少し明るくして、境界を分かりやすく
+            let bar_color = self.color.linear_multiply(0.6);
+            painter.rect_filled(fill_rect, 1.0, bar_color);
+
+            // 外枠
+            painter.rect_stroke(
+                rect,
+                2.0,
+                egui::Stroke::new(1.0, egui::Color32::from_gray(60)),
+                egui::StrokeKind::Inside,
+            );
+
+            // テキストの準備
+            let text = format!("{}: {}", self.param.name(), self.param);
+            let font_id = egui::FontId::proportional(11.0);
+            let text_pos = rect.center();
+
+            // --- 視認性向上のためのテキスト描画 ---
+            // A. 背景に黒いドロップシャドウを薄く入れる（視認性の確保）
+            painter.text(
+                text_pos + egui::vec2(1.0, 1.0),
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id.clone(),
+                egui::Color32::from_black_alpha(200),
+            );
+
+            // B. バーの上にある文字を「反転色」にするためのクリッピング描画
+            // 1. バーがない部分の文字（グレー）
+            painter.with_clip_rect(rect).text(
+                text_pos,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id.clone(),
+                egui::Color32::from_gray(180),
+            );
+
+            // 2. バーと重なっている部分の文字（白または黒）
+            // バーの領域だけでクリッピングして、その中だけ明るい色で上書きする
+            painter.with_clip_rect(fill_rect).text(
+                text_pos,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id,
+                egui::Color32::WHITE,
+            );
+
+            // つまみ（ハンドル）は最後。細くして文字を邪魔しないように。
+            let handle_rect = if is_vertical {
                 let y = (rect.bottom() - (visual_val * rect.height()))
-                    .clamp(rect.top() + 2.0, rect.bottom() - 2.0);
-                let r = egui::Rect::from_center_size(
+                    .clamp(rect.top() + 1.0, rect.bottom() - 1.0);
+                egui::Rect::from_center_size(
                     egui::pos2(rect.center().x, y),
-                    egui::vec2(rect.width(), 4.0),
-                );
-                (
-                    r,
-                    egui::pos2(r.left(), r.center().y),
-                    egui::pos2(r.right(), r.center().y),
+                    egui::vec2(rect.width(), 2.0),
                 )
             } else {
                 let x = (rect.left() + (visual_val * rect.width()))
-                    .clamp(rect.left() + 2.0, rect.right() - 2.0);
-                let r = egui::Rect::from_center_size(
+                    .clamp(rect.left() + 1.0, rect.right() - 1.0);
+                egui::Rect::from_center_size(
                     egui::pos2(x, rect.center().y),
-                    egui::vec2(4.0, rect.height()),
-                );
-                (
-                    r,
-                    egui::pos2(r.center().x, r.top()),
-                    egui::pos2(r.center().x, r.bottom()),
+                    egui::vec2(2.0, rect.height()),
                 )
             };
-
-            painter.rect_filled(handle_rect, 1.0, egui::Color32::WHITE);
-            painter.line_segment(
-                [line_start, line_end],
-                egui::Stroke::new(1.0, egui::Color32::BLACK),
-            );
-
-            // テキスト
-            let text = format!("{}: {}", self.param.name(), self.param);
-            painter.text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                text,
-                egui::FontId::proportional(11.0),
-                egui::Color32::WHITE,
-            );
+            painter.rect_filled(handle_rect, 0.0, egui::Color32::WHITE);
         }
 
         response
