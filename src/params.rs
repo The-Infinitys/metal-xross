@@ -8,6 +8,8 @@ pub struct MetalXrossParams {
     #[persist = "editor_state"]
     pub editor_state: Arc<EguiState>,
 
+    #[nested(group = "NoiseGate", id_prefix = "noise_gate_")]
+    pub noise_gate: NoiseGateParams,
     #[nested(group = "General")]
     pub general: GeneralParams,
     #[nested(group = "Style Settings", id_prefix = "style_")]
@@ -16,6 +18,52 @@ pub struct MetalXrossParams {
     // --- 下段に並べるEQ ---
     #[nested(group = "Equalizer", id_prefix = "eq_")]
     pub eq: EqualizerParams,
+}
+#[derive(Params)]
+pub struct NoiseGateParams {
+    /// ゲートが開く音量の閾値 (dB)
+    /// -60dB (ガバガバ) 〜 -10dB (パツパツ)
+    #[id = "thr"]
+    pub threshold: FloatParam,
+
+    /// スペクトル解析の感度 (Tolerance)
+    /// 0.0: 倍音を最大限保護 (自然) / 1.0: ノイズっぽければ即座に高域カット (超タイト)
+    #[id = "tol"]
+    pub tolerance: FloatParam,
+
+    /// ゲートが閉じる速度 (Release)
+    /// 1ms (Djentな刻み) 〜 500ms (自然な余韻)
+    #[id = "rel"]
+    pub release: FloatParam,
+}
+
+impl Default for NoiseGateParams {
+    fn default() -> Self {
+        Self {
+            threshold: FloatParam::new(
+                "Threshold",
+                -45.0,
+                FloatRange::Linear {
+                    min: -70.0,
+                    max: -10.0,
+                },
+            )
+            .with_unit(" dB"),
+
+            tolerance: FloatParam::new("Tolerance", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+
+            release: FloatParam::new(
+                "Release",
+                100.0,
+                FloatRange::Skewed {
+                    min: 1.0,
+                    max: 500.0,
+                    factor: FloatRange::skew_factor(-2.0), // 速い方に解像度を寄せる
+                },
+            )
+            .with_unit(" ms"),
+        }
+    }
 }
 #[derive(Params)]
 pub struct GeneralParams {
@@ -125,6 +173,7 @@ impl Default for MetalXrossParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(800, 500),
+            noise_gate: NoiseGateParams::default(),
             general: GeneralParams::default(),
             style: StyleParams::default(),
             eq: EqualizerParams::default(),

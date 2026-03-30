@@ -27,7 +27,7 @@ impl MetalXross {
     pub fn new() -> Self {
         let params = Arc::new(MetalXrossParams::default());
         let equalizer = XrossEqualizer::new(Arc::clone(&params));
-        let noise_gate = XrossNoiseGate::new();
+        let noise_gate = XrossNoiseGate::new(Arc::clone(&params));
         let gain = XrossGainSystem::new(Arc::clone(&params));
         let level = XrossLevelSystem::new(Arc::clone(&params));
         Self {

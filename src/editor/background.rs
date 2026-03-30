@@ -21,13 +21,13 @@ impl PcbBackground {
 
         let draw_size = img_size * scale;
         let draw_rect = egui::Rect::from_center_size(rect.center(), draw_size);
-
+        let op = 128;
         // 3. 描画
         painter.image(
             texture.id(),
             draw_rect,
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-            egui::Color32::from_rgba_premultiplied(255, 255, 255, 128),
+            egui::Color32::from_rgba_premultiplied(op, op, op, op),
         );
     }
 

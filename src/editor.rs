@@ -1,11 +1,12 @@
 use nih_plug::params::FloatParam;
 use nih_plug_egui::{
     create_egui_editor,
-    egui::{self, Color32},
+    egui::{self, Color32, Frame, RichText},
 };
 use std::sync::Arc;
 
-use crate::params::MetalXrossParams;
+use crate::editor::knob::{LinearSlider, SingleKnob, StackedKnob};
+use crate::params::MetalXrossParams; // LinearSliderをインポート
 
 pub mod background;
 pub mod equalizer;
@@ -13,28 +14,23 @@ pub mod knob;
 
 use background::PcbBackground;
 use equalizer::EqualizerBox;
-use knob::SingleKnob;
-use knob::StackedKnob;
-/// HSLからColor32を生成するヘルパー (虹色用)
-/// h, s, l は 0.0..=1.0
-fn from_hsl(h: f32, s: f32, l: f32) -> Color32 {
-    let rgb = egui::epaint::Hsva::new(h, s, l, 1.0).to_rgba_unmultiplied();
-    let r = (rgb[0] * 255.0) as u8;
-    let g = (rgb[1] * 255.0) as u8;
-    let b = (rgb[2] * 255.0) as u8;
-    Color32::from_rgb(r, g, b)
+
+/// 彩度を最大化した鮮やかな色を生成する
+fn from_hsv_vibrant(h: f32) -> Color32 {
+    // S=1.0, V=1.0 にすることで、最も彩度が高い状態を維持する
+    let hsva = egui::epaint::Hsva::new(h, 1.0, 1.0, 1.0);
+    hsva.into()
 }
 
-/// パラメータの表示設定を管理する構造体
 struct KnobConfig<'a> {
     label: &'static str,
     param: KnobParam<'a>,
 }
+
 enum KnobParam<'a> {
     Stacked(&'a FloatParam, &'a FloatParam),
     Single(&'a FloatParam),
 }
-
 pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude::Editor>> {
     create_egui_editor(
         params.editor_state.clone(),
@@ -42,92 +38,130 @@ pub fn create(params: Arc<MetalXrossParams>) -> Option<Box<dyn nih_plug::prelude
         |_cx, _state| {},
         move |egui_ctx, setter, _state| {
             egui::CentralPanel::default()
-                .frame(egui::Frame::new().fill(Color32::BLACK))
+                .frame(Frame::NONE.fill(Color32::BLACK))
                 .show(egui_ctx, |ui| {
-                    // 背景の描画
+                    // 背景描画
                     PcbBackground::draw(ui);
 
-                    // --- パラメータリストの定義 ---
-                    // ここに並べたい順番で登録するだけでOKです
-                    let knob_configs = [
-                        KnobConfig {
-                            label: "INPUT",
-                            param: KnobParam::Stacked(
-                                &params.general.input.gain,
-                                &params.general.input.limit,
-                            ),
-                        },
-                        KnobConfig {
-                            label: "GAIN",
-                            param: KnobParam::Single(&params.general.gain),
-                        },
-                        KnobConfig {
-                            label: "STYLE",
-                            param: KnobParam::Single(&params.style.kind),
-                        },
-                        KnobConfig {
-                            label: "LOW",
-                            param: KnobParam::Single(&params.style.low),
-                        },
-                        KnobConfig {
-                            label: "MID",
-                            param: KnobParam::Single(&params.style.mid),
-                        },
-                        KnobConfig {
-                            label: "HIGH",
-                            param: KnobParam::Single(&params.style.high),
-                        },
-                        KnobConfig {
-                            label: "OUTPUT",
-                            param: KnobParam::Stacked(
-                                &params.general.output.gain,
-                                &params.general.output.limit,
-                            ),
-                        },
-                    ];
+                    ui.vertical(|ui| {
+                        // 1. 最上段: NOISE GATE (1行に凝縮)
+                        ui.add_space(2.0);
+                        let gate_frame = Frame::NONE
+                            .fill(Color32::from_black_alpha(150))
+                            .corner_radius(2.0)
+                            .inner_margin(2.0);
 
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(20.0);
+                        gate_frame.show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let sw = (ui.available_width() - 20.0) / 3.0;
+                                ui.add_sized(
+                                    [sw, 16.0],
+                                    LinearSlider::new(
+                                        &params.noise_gate.threshold,
+                                        setter,
+                                        Color32::from_rgb(0, 255, 200),
+                                    ),
+                                );
+                                ui.add_sized(
+                                    [sw, 16.0],
+                                    LinearSlider::new(
+                                        &params.noise_gate.tolerance,
+                                        setter,
+                                        Color32::from_rgb(0, 200, 255),
+                                    ),
+                                );
+                                ui.add_sized(
+                                    [sw, 16.0],
+                                    LinearSlider::new(
+                                        &params.noise_gate.release,
+                                        setter,
+                                        Color32::from_rgb(100, 150, 255),
+                                    ),
+                                );
+                            });
+                        });
 
-                        // ノブの並びを動的に生成
+                        ui.add_space(4.0);
+
+                        // 2. 中段: MAIN KNOBS (allocate_uiを使わず直接横並び)
+                        let knob_configs = [
+                            KnobConfig {
+                                label: "IN",
+                                param: KnobParam::Stacked(
+                                    &params.general.input.gain,
+                                    &params.general.input.limit,
+                                ),
+                            },
+                            KnobConfig {
+                                label: "GAIN",
+                                param: KnobParam::Single(&params.general.gain),
+                            },
+                            KnobConfig {
+                                label: "STYLE",
+                                param: KnobParam::Single(&params.style.kind),
+                            },
+                            KnobConfig {
+                                label: "LOW",
+                                param: KnobParam::Single(&params.style.low),
+                            },
+                            KnobConfig {
+                                label: "MID",
+                                param: KnobParam::Single(&params.style.mid),
+                            },
+                            KnobConfig {
+                                label: "HIGH",
+                                param: KnobParam::Single(&params.style.high),
+                            },
+                            KnobConfig {
+                                label: "OUT",
+                                param: KnobParam::Stacked(
+                                    &params.general.output.gain,
+                                    &params.general.output.limit,
+                                ),
+                            },
+                        ];
+
                         ui.horizontal(|ui| {
-                            let total_knobs = knob_configs.len();
-                            let spacing = 30.0;
-                            ui.spacing_mut().item_spacing.x = spacing;
+                            let total = knob_configs.len();
+                            let spacing = ui.spacing().item_spacing.x;
+                            let knob_w = (ui.available_width() - (spacing * (total - 1) as f32))
+                                / total as f32;
 
-                            // 中央寄せを計算するために全体の幅を確保
-                            ui.columns(total_knobs, |columns| {
-                                for (i, config) in knob_configs.iter().enumerate() {
-                                    columns[i].vertical_centered(|ui| {
-                                        // 虹色の計算 (色相 H を 0.0 ~ 0.8 くらいで回すと綺麗です)
-                                        let hue = i as f32 / total_knobs as f32;
-                                        let color = from_hsl(hue, 0.8, 0.6);
-
+                            for (i, config) in knob_configs.iter().enumerate() {
+                                ui.vertical(|ui| {
+                                    ui.set_width(knob_w);
+                                    ui.vertical_centered(|ui| {
+                                        let color = from_hsv_vibrant(i as f32 / total as f32);
                                         ui.label(
-                                            egui::RichText::new(config.label)
-                                                .size(13.0)
-                                                .strong()
+                                            RichText::new(config.label)
+                                                .size(12.0)
                                                 .color(Color32::WHITE),
                                         );
 
-                                        ui.add_space(4.0);
+                                        // ノブ本体
                                         match config.param {
-                                            KnobParam::Single(param) => {
-                                                ui.add(SingleKnob::new(param, setter, color));
+                                            KnobParam::Single(p) => {
+                                                ui.add(SingleKnob::new(p, setter, color));
                                             }
-                                            KnobParam::Stacked(param1, param2) => {
+                                            KnobParam::Stacked(p1, p2) => {
                                                 ui.add(StackedKnob::new(
-                                                    param1, param2, setter, color, color,
+                                                    p1, p2, setter, color, color,
                                                 ));
                                             }
                                         }
                                     });
-                                }
-                            });
+                                });
+                            }
                         });
 
-                        ui.add_space(30.0);
-                        EqualizerBox::draw(ui, &params, setter);
+                        ui.add_space(2.0);
+
+                        // 3. 下段: EQUALIZER (タイトルを消して全開放)
+                        // 残りの高さを計算（安全のために数ピクセル引く）
+                        let eq_h = ui.available_height() - 4.0;
+                        if eq_h > 0.0 {
+                            EqualizerBox::draw(ui, &params, setter);
+                        }
                     });
                 });
         },
