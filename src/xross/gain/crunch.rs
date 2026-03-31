@@ -10,7 +10,6 @@ pub struct XrossCrunchSystem {
     high_shelf_state: Vec<f32>,
     dc_block_state: Vec<[f32; 2]>,
     bias_env: Vec<f32>,
-    // 物理的なサギング（Sag）を模倣するための時定数保持用
     sag_state: Vec<f32>,
 }
 
@@ -22,25 +21,31 @@ impl XrossCrunchSystem {
             high_shelf_state: vec![0.0; 2],
             dc_block_state: vec![[0.0; 2]; 2],
             bias_env: vec![0.0; 2],
-            sag_state: vec![1.0; 2], // 1.0 = 電圧フル、ここから下がる
+            sag_state: vec![1.0; 2],
         }
     }
 
-    /// 真空管の非対称サチュレーション（グリッド電流とカットオフの再現）
+    /// クランチ特有の「柔らかい」非対称サチュレーション
     #[inline(always)]
-    fn tube_stage(&self, x: f32, bias: f32, sag: f32) -> f32 {
-        // sagによって全体のヘッドルームがわずかに狭まる
-        let input = (x * sag) + bias;
+    fn warm_tube_stage(&self, x: f32, bias: f32, sag: f32, intensity: f32) -> f32 {
+        // intensity=0 の時は完全にリニアな入出力を保証
+        if intensity < 0.001 {
+            return x;
+        }
 
-        if input > 0.0 {
-            // クリーン〜ソフトサチュレーション領域
+        let input = (x * sag) + (bias * intensity);
+
+        // プラス側：非常に緩やかなtanh
+        // マイナス側：バイアスによってカットオフ気味になる非対称性
+        let out = if input > 0.0 {
             input.tanh()
         } else {
-            // マイナス側は「カットオフ」に向かってより急激に飽和
-            // atanを使いつつ、バイアスが深いほど「ブチブチ」とした質感に
-            let k = 1.6 + bias.abs() * 2.0;
+            let k = 1.2 + (bias.abs() * 2.0 * intensity);
             (input * k).atan() * (1.0 / k.atan())
-        }
+        };
+
+        // 原音と歪みをブレンドすることで、gain 0.0 での完全なクリーンを担保
+        x * (1.0 - intensity) + out * intensity
     }
 
     fn drive_core(
@@ -53,33 +58,39 @@ impl XrossCrunchSystem {
         ch: usize,
     ) -> f32 {
         // 1. TIGHTNESS (Pre-HPF)
-        // クランチは低域が多すぎると濁るため、s_lowに応じて80Hz-250Hzを可変カット
-        let hp_freq = 0.02 + (1.0 - s_low).powf(1.5) * 0.15;
+        // Style Lowが低いほど、中域の「ホコホコ」した温かさを残す
+        let hp_freq = 0.01 + (1.0 - s_low).powf(2.0) * 0.12;
         let filtered = input - self.low_cut_state[ch];
         self.low_cut_state[ch] = input * hp_freq + self.low_cut_state[ch] * (1.0 - hp_freq);
 
-        // 2. DYNAMIC SAG & BIAS (アンプの呼吸)
-        // 信号が強いほど電源電圧が落ちる(sag)、かつ動作点がずれる(bias)
+        // 2. DYNAMIC SAG & BIAS (呼吸するアンプ)
         let abs_in = filtered.abs();
 
-        // Sag: 強い信号でヘッドルームが収縮し、コンプレッション感が出る
-        let target_sag = 1.0 - (abs_in * 0.2 * gain);
-        self.sag_state[ch] = self.sag_state[ch] * 0.99 + target_sag * 0.01;
+        // Sag: 弾いた瞬間に「クッ」と沈み込むコンプレッション
+        let target_sag = 1.0 - (abs_in * 0.3 * gain);
+        self.sag_state[ch] += (target_sag - self.sag_state[ch]) * 0.05;
 
-        // Bias: 非対称性を生み、偶数次倍音（リッチな響き）を付加
-        let target_bias = -(abs_in * 0.15 * gain) + (s_mid * 0.05);
-        self.bias_env[ch] = self.bias_env[ch] * 0.995 + target_bias * 0.005;
+        // Bias: グリッド・バイアス変動による偶数次倍音の付加
+        let target_bias = -(abs_in * 0.2 * gain) + (s_mid * 0.05);
+        self.bias_env[ch] += (target_bias - self.bias_env[ch]) * 0.01;
 
         // 3. DRIVE STAGE
-        // Gain 0.0 = 真空管を通しただけのクリーン / 1.0 = 激しいピッキングで歪むクランチ
-        let drive = 1.0 + (gain * 8.0);
+        // gain=0.0 では drive=1.0、intensity=0.0 になるよう設計
+        let drive = 1.0 + (gain * 12.0);
+        let intensity = gain.min(1.0); // 歪みの深さ自体を制御
 
-        // 多段処理で深みを出す
-        let stage1 = self.tube_stage(filtered * drive, self.bias_env[ch], self.sag_state[ch]);
-        let stage2 = self.tube_stage(stage1 * 1.5, self.bias_env[ch] * 0.5, 1.0);
+        // 多段処理だが、intensity によって gain=0 時のバイパスを実現
+        let stage1 = self.warm_tube_stage(
+            filtered * drive,
+            self.bias_env[ch],
+            self.sag_state[ch],
+            intensity,
+        );
+        let stage2 = self.warm_tube_stage(stage1 * 1.2, self.bias_env[ch] * 0.5, 1.0, intensity);
 
         // 4. POST-FILTER (Style High)
-        let lp_freq = 0.15 + (s_high * 0.5);
+        // Style Highが高いほど、高域の「鈴鳴り（Glassy High）」を開放
+        let lp_freq = 0.1 + (s_high.powf(1.5) * 0.7);
         let out = stage2 * lp_freq + self.high_shelf_state[ch] * (1.0 - lp_freq);
         self.high_shelf_state[ch] = out;
 
@@ -95,27 +106,25 @@ impl XrossCrunchSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        if gain < 0.001 {
+        // Gain 0.0 の時は全ての処理をバイパスして完全にクリーンにする
+        if gain < 0.0001 {
             return input;
         }
 
-        // クランチは繊細な倍音が命なので、常に2倍オーバーサンプリング
+        // クランチは繊細な質感が命。常に2倍オーバーサンプリング
         let mut output = 0.0;
         for _ in 0..2 {
             output += self.drive_core(input, gain, s_low, s_mid, s_high, ch);
         }
         output *= 0.5;
 
-        // Dry Mix: Gainが低い時の「弾力のあるクリーン」を維持
-        let dry_mix = (1.0 - gain).powf(1.5) * 0.5;
-        let mixed = output * (1.0 - dry_mix) + input * dry_mix;
-
-        // DC Block (バイアス変動によるノイズ除去)
-        let final_out = mixed - self.dc_block_state[ch][0] + (0.995 * self.dc_block_state[ch][1]);
-        self.dc_block_state[ch][0] = mixed;
+        // DC Block
+        let final_out = output - self.dc_block_state[ch][0] + (0.995 * self.dc_block_state[ch][1]);
+        self.dc_block_state[ch][0] = output;
         self.dc_block_state[ch][1] = final_out;
 
-        final_out * 0.8
+        // gainに応じてわずかに音量を補正
+        final_out * (1.0 - gain * 0.15)
     }
 }
 
