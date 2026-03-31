@@ -39,6 +39,7 @@ pub struct NoiseGateParams {
 
 impl Default for NoiseGateParams {
     fn default() -> Self {
+        let noise_gate_string_func = |v: f32| format!("{:.1}", v);
         Self {
             threshold: FloatParam::new(
                 "Threshold",
@@ -48,10 +49,11 @@ impl Default for NoiseGateParams {
                     max: -10.0,
                 },
             )
+            .with_value_to_string(Arc::new(noise_gate_string_func))
             .with_unit(" dB"),
 
-            tolerance: FloatParam::new("Tolerance", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-
+            tolerance: FloatParam::new("Tolerance", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(noise_gate_string_func)),
             release: FloatParam::new(
                 "Release",
                 100.0,
@@ -61,6 +63,7 @@ impl Default for NoiseGateParams {
                     factor: FloatRange::skew_factor(-2.0), // 速い方に解像度を寄せる
                 },
             )
+            .with_value_to_string(Arc::new(noise_gate_string_func))
             .with_unit(" ms"),
         }
     }
