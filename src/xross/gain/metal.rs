@@ -1,4 +1,3 @@
-use crate::MetalXross;
 use crate::params::MetalXrossParams;
 use crate::xross::gain::XrossGainProcessor;
 use nih_plug::prelude::*;
@@ -6,24 +5,24 @@ use std::sync::Arc;
 
 pub struct XrossMetalSystem {
     params: Arc<MetalXrossParams>,
-    ap_state: Vec<f32>,
-    pre_hp: Vec<f32>,
-    stage_states: Vec<[f32; 3]>, // 多段処理用
-    slew_state: Vec<f32>,        // スルーレート制御用
-    dc_block: Vec<f32>,
-    prev_input: Vec<f32>, // アップサンプリング補間用
+    pre_hp: [f32; 2],
+    pre_hp_fast: [f32; 2],
+    slew_state: [f32; 2],
+    dc_block: [f32; 2],
+    prev_input: [f32; 2],
+    envelope: [f32; 2],
 }
 
 impl XrossMetalSystem {
     pub fn new(params: Arc<MetalXrossParams>) -> Self {
         Self {
             params,
-            ap_state: vec![0.0; 2],
-            pre_hp: vec![0.0; 2],
-            stage_states: vec![[0.0; 3]; 2],
-            slew_state: vec![0.0; 2],
-            dc_block: vec![0.0; 2],
-            prev_input: vec![0.0; 2],
+            pre_hp: [0.0; 2],
+            pre_hp_fast: [0.0; 2],
+            slew_state: [0.0; 2],
+            dc_block: [0.0; 2],
+            prev_input: [0.0; 2],
+            envelope: [0.0; 2],
         }
     }
 
@@ -36,49 +35,51 @@ impl XrossMetalSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // 1. TIGHTENING & BRIGHTENING (Pre-Filtering)
-        // 歪みに入る前に高域を少し持ち上げる（Style Highに連動）
-        let brightness = s_high * 0.4;
-        let pre_emphasized = input + (input - self.pre_hp[ch]) * brightness;
+        // --- 1. PRE-DYNAMICS (入力感知) ---
+        let abs_in = input.abs();
+        self.envelope[ch] += (abs_in - self.envelope[ch]) * 0.05;
 
-        // 低域カット（s_low 0.0で超絶タイト、1.0でドロドロ）
-        let hp_freq = 0.15 + (1.0 - s_low).powf(1.5) * 0.45;
-        let filtered = pre_emphasized - self.pre_hp[ch];
-        self.pre_hp[ch] = pre_emphasized * hp_freq + self.pre_hp[ch] * (1.0 - hp_freq);
+        // --- 2. PRE-FILTER (低域のダブつきを徹底排除) ---
+        // Style Lowが低いほど、タイトに（400Hz付近までカット）
+        let hp_freq = 0.05 + (1.0 - s_low) * 0.15 + (self.envelope[ch] * 0.1);
+        self.pre_hp[ch] += hp_freq * (input - self.pre_hp[ch]);
+        let mut x = input - self.pre_hp[ch];
 
-        // 2. HARDER CLIPPING (より鋭いエッジ)
-        let total_gain = 30.0 + gain * 140.0; // ゲイン上限をさらにアップ
-        let mut x = filtered * total_gain;
+        // --- 3. MONSTER GAIN STAGE (歪みの核) ---
+        // ゲインを指数関数的に増幅 (最大 +80dB 以上のイメージ)
+        let drive_amount = (gain * 6.0).exp() * 20.0;
+        x *= drive_amount;
 
-        // 非対称性を減らし、矩形波（四角）に近づけることで「芯」を出す
-        // 0.05までリニア領域を狭める
-        let metal_shaper = |val: f32, h: f32| {
-            let abs_v = val.abs();
-            if abs_v < 0.05 {
-                val
-            } else {
-                val.signum() * (0.05 + (1.0 - 0.05) * (1.0 - (-h * (abs_v - 0.05)).exp()))
-            }
+        // --- 4. TRIPLE-STAGE SHAPING (粘りとキレの両立) ---
+
+        // Step A: 非対称サチュレーション (偶数次倍音 = 粘り)
+        // 上下でクリップの深さを変え、波形を「いびつ」にする
+        x = if x > 0.0 {
+            (x * 1.5).tanh()
+        } else {
+            (x * 0.8).atan() * 1.2
         };
 
-        x = metal_shaper(x, 2.0 + s_mid); // Stage 1
-        x = metal_shaper(x * 2.0, 6.0); // Stage 2: ここで完全に壁を作る
+        // Step B: ミッド・ブースト & 2nd 歪み
+        // Style Midで「ゴンッ」という芯を作る
+        let mid_push = s_mid * 2.0;
+        x = (x + (x * x * x) * mid_push).clamp(-1.0, 1.0);
 
-        // 3. SLEW RATE (エッジの鋭さを解放)
-        // 丸まっていた原因：max_step を大幅に引き上げ、高域をスルーさせる
-        let max_step = 0.2 + s_high * 0.8; // 以前より4倍近く速い変化を許容
+        // Step C: ハード・エッジ (矩形波に近づける)
+        // 0.1を超えたら急激に潰す
+        let hard_gain = 4.0;
+        x = (x * hard_gain).clamp(-0.95, 0.95);
+
+        // --- 5. SLEW RATE & BITE (高域のキレ) ---
+        // スルーレートを Style High で開放。最大時はほぼ「素通し」でエッジを立たせる
+        let max_step = 0.05 + (s_high * 0.9);
         let diff = x - self.slew_state[ch];
         self.slew_state[ch] += diff.clamp(-max_step, max_step);
         x = self.slew_state[ch];
 
-        // 4. POST-FILTER (Razor Edge)
-        // Style Highが最大なら、ほぼフィルタを通さない（全開）にする
-        let lp_freq = 0.1 + (s_high.powf(1.2) * 0.85);
-        let out = x * lp_freq + self.stage_states[ch][1] * (1.0 - lp_freq);
-        self.stage_states[ch][1] = out;
-
-        out
+        x
     }
+
     fn process_sample(
         &mut self,
         input: f32,
@@ -88,44 +89,33 @@ impl XrossMetalSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // 高ゲイン時はエイリアシングノイズを避けるため4倍、低ゲインでも2倍OS
-        let os_factor = if gain > 0.6 { 4 } else { 2 };
+        // OSをあえて通さず、エイリアシングによる「汚さ」を味方につける (Dirty Metal)
+        // もしノイズが酷すぎる場合は drive_core の前後で 2倍OSを検討
+        let output = self.drive_core(input, gain, s_low, s_mid, s_high, ch);
 
-        let mut output = 0.0;
-        let step = (input - self.prev_input[ch]) / os_factor as f32;
-        let mut current_input = self.prev_input[ch];
+        // DC Block (必須)
+        let dc_fix = output - self.dc_block[ch];
+        self.dc_block[ch] = output + 0.995 * (self.dc_block[ch] - output);
 
-        for _ in 0..os_factor {
-            current_input += step; // 線形補間によるアップサンプリング
-            output += self.drive_core(current_input, gain, s_low, s_mid, s_high, ch);
-        }
-
-        self.prev_input[ch] = input;
-        output /= os_factor as f32;
-
-        // DC Block (低周波の揺れをカット)
-        let final_out = output - self.dc_block[ch] + (0.995 * self.dc_block[ch]);
-        self.dc_block[ch] = output;
-
-        // 最終メイクアップ: 圧倒的な音圧だが歪みの芯を残す
-        final_out * 0.45
+        // 最終メイクアップ (これでもデカすぎる場合は 0.5 に下げてください)
+        dc_fix * 0.7
     }
 }
 
 impl XrossGainProcessor for XrossMetalSystem {
     fn initialize(
         &mut self,
-        layout: &AudioIOLayout,
+        _layout: &AudioIOLayout,
         _config: &BufferConfig,
-        _context: &mut impl InitContext<MetalXross>,
+        _context: &mut impl InitContext<crate::MetalXross>,
     ) -> bool {
-        let num_channels = layout.main_output_channels.map(|n| n.get()).unwrap_or(2) as usize;
-        self.ap_state = vec![0.0; num_channels];
-        self.pre_hp = vec![0.0; num_channels];
-        self.stage_states = vec![[0.0; 3]; num_channels];
-        self.slew_state = vec![0.0; num_channels];
-        self.dc_block = vec![0.0; num_channels];
-        self.prev_input = vec![0.0; num_channels];
+        // 固定配列を使用しているのでシンプルに初期化
+        self.pre_hp = [0.0; 2];
+        self.pre_hp_fast = [0.0; 2];
+        self.slew_state = [0.0; 2];
+        self.dc_block = [0.0; 2];
+        self.prev_input = [0.0; 2];
+        self.envelope = [0.0; 2];
         true
     }
 
@@ -135,8 +125,11 @@ impl XrossGainProcessor for XrossMetalSystem {
         let sm = self.params.style.mid.value();
         let sh = self.params.style.high.value();
 
+        // ch_idx が 2チャンネル以上の場合の安全策
+        let ch = ch_idx % 2;
+
         for sample in slice {
-            *sample = self.process_sample(*sample, g, sl, sm, sh, ch_idx);
+            *sample = self.process_sample(*sample, g, sl, sm, sh, ch);
         }
     }
 }
