@@ -12,6 +12,7 @@ pub struct XrossMetalSystem {
     envelope: [f32; 2],
     prev_input: [f32; 2],
     os_lpf: [f32; 2],
+    os_lpf_2: [f32; 2], // 2段目追加
     low_resonance: [f32; 2],
 }
 
@@ -26,61 +27,62 @@ impl XrossMetalSystem {
             envelope: [0.0; 2],
             prev_input: [0.0; 2],
             os_lpf: [0.0; 2],
+            os_lpf_2: [0.0; 2],
             low_resonance: [0.0; 2],
         }
     }
 
     #[inline]
-    fn drive_core(&mut self, input: f32, env: f32, ch: usize) -> f32 {
+    fn drive_core(&mut self, input: f32, env: f32, ch: usize, os_inv: f32) -> f32 {
         let gain = self.params.general.gain.value();
         let s_low = self.params.style.low.value();
         let s_mid = self.params.style.mid.value();
         let s_high = self.params.style.high.value();
-        // === Modern Metal Tight & Wide Edition ===
-        // モダンメタル向けにさらにタイト（低域の締まり）＋ワイドレンジ（極端なV字ドンシャリ）に調整。
-        // 高域の熱さと迫力は維持しつつ、ホワイトノイズをさらに強力に抑制。
 
-        // 1. プリ・ハイパス（より高いカットオフで低域をタイトに）
-        let hp_freq = 0.155 + (1.0 - s_low) * 0.115;
+        // 1. プリ・ハイパス（OS係数で補正し、低域のボワつきをカット）
+        let hp_freq = (0.155 + (1.0 - s_low) * 0.115) * os_inv;
         self.pre_hp[ch] += hp_freq * (input - self.pre_hp[ch]);
         let mut x = input - self.pre_hp[ch];
 
-        // 2. プリ・レゾナンス（中域の熱さをキープしつつノイズ蓄積を防止）
-        let res_freq = 0.265;
-        let res_q = 0.58 + (s_mid * 0.52);
+        // 2. プリ・レゾナンス（ノイズを抑えつつエッジを立てる）
+        let res_freq = 0.265 * os_inv;
+        let res_q = 0.52 + (s_mid * 0.48);
         self.pre_res[ch] += res_freq * (x - self.pre_res[ch]);
-        x = x + (x - self.pre_res[ch]) * (3.15 * res_q);
-        self.pre_res[ch] *= 0.978; // さらに軽いダンピングでノイズ抑制
+        x = x + (x - self.pre_res[ch]) * (2.8 * res_q);
+        self.pre_res[ch] *= 0.98;
 
-        // 3. 凶悪多段ハードクリッピング（モダンメタルらしい固い飽和）
-        let drive = 11.5 + (gain * 57.0); // 内部ゲインを最適化（ノイズ低減）
+        // 3. ゲイン設定（入力ノイズを考慮し、ピークを制御）
+        let drive = 5.0 + (gain * 30.0);
         x *= drive;
 
-        // Stage 1: 非対称クリッピング（攻撃性を保ちつつ滑らかに）
+        // Stage 1: Asymmetric Soft Clip
         x = if x > 0.0 {
-            (x * 2.75).atan() * 0.43
+            (x * 2.5).atan() * 0.9
         } else {
-            (x * 2.15).tanh() * 0.47
+            (x * 2.0).tanh() * 1.1
         };
 
-        // Stage 2: 超ハード・リミッティング（固く・クリアに）
-        let hard_warp = 2.45 + (gain * 9.0);
-        x = (x * hard_warp).clamp(-0.925, 0.925);
+        // Stage 2: Harder Edge
+        let hard_warp = 2.0 + (gain * 30.0);
+        x = (x * hard_warp).clamp(-0.90, 0.90);
 
-        // 4. ポスト・スクープEQ（ワイドレンジ化：中域をさらに深く削る）
-        let scoop_depth = (0.67 - s_mid).max(0.0) * 1.85; // より極端なV字
-        let scoop_filter = x.powi(3) - x * 0.26;
+        // 4. ポスト・スクープEQ（不要な中域ノイズを削りV字を作る）
+        let scoop_depth = (0.7 - s_mid).max(0.0) * 1.6;
+        let scoop_filter = x.powi(3) - x * 0.3;
         x -= scoop_filter * scoop_depth;
 
-        // 5. Bite & Edge（高域の金属エッジを残しつつノイズ激減）
-        let bite = 0.135 + (s_high * 0.58) * (env * 0.78 + 0.20);
+        // 5. Adaptive Bite Control（無音時のシャー音を抑制）
+        // envが低い時はbiteを絞り、ノイズを通さないように調整
+        let bite_base = 0.12 + (s_high * 0.55);
+        let bite = bite_base * (env * 0.85 + 0.15).min(1.0);
         let diff = x - self.slew_state[ch];
         self.slew_state[ch] += diff.clamp(-bite, bite);
         x = self.slew_state[ch];
 
-        // 6. キャビネット・パンチ（低域を固く・重く、タイトに）
-        let punch_amount = s_low * 1.28;
-        self.low_resonance[ch] += 0.088 * (x - self.low_resonance[ch]); // レスポンスを速く
+        // 6. Cabinet Punch
+        let punch_amount = s_low * 1.35;
+        let punch_freq = 0.08 * os_inv;
+        self.low_resonance[ch] += punch_freq * (x - self.low_resonance[ch]);
         x += self.low_resonance[ch] * punch_amount;
 
         x.clamp(-1.0, 1.0)
@@ -88,38 +90,41 @@ impl XrossMetalSystem {
 
     fn process_sample(&mut self, input: f32, ch: usize) -> f32 {
         let os_factor = 4;
+        let inv_os = 1.0 / os_factor as f32;
         let target = input.abs();
 
-        // エンベロープ（モダンメタルらしいタイトなアタック）
+        // エンベロープ検出
         let env_step = if target > self.envelope[ch] {
-            0.29
+            0.3
         } else {
-            0.011
+            0.01
         };
         self.envelope[ch] += env_step * (target - self.envelope[ch]);
 
         let mut output_sum = 0.0;
-        let inv_os = 1.0 / os_factor as f32;
-
         for i in 0..os_factor {
             let fraction = i as f32 * inv_os;
             let sub_sample = self.prev_input[ch] + (input - self.prev_input[ch]) * fraction;
-            output_sum += self.drive_core(sub_sample, self.envelope[ch], ch);
+            // OS係数をdrive_coreに渡してフィルターを補正
+            output_sum += self.drive_core(sub_sample, self.envelope[ch], ch, inv_os);
         }
 
         self.prev_input[ch] = input;
         let raw_out = output_sum * inv_os;
 
-        // === ノイズ対策強化：OS後LPFをさらに強力に（0.62 → 0.57）===
-        self.os_lpf[ch] += 0.57 * (raw_out - self.os_lpf[ch]);
+        // === 強化ノイズ対策：2次LPF (12dB/oct) ===
+        // 1段目で大まかに削り、2段目でさらに急峻にカット
+        let lpf_cutoff = 0.48;
+        self.os_lpf[ch] += lpf_cutoff * (raw_out - self.os_lpf[ch]);
+        self.os_lpf_2[ch] += lpf_cutoff * (self.os_lpf[ch] - self.os_lpf_2[ch]);
 
-        let out = self.os_lpf[ch];
+        let out = self.os_lpf_2[ch];
 
-        // DCブロッカー（低域ノイズもさらに抑制）
+        // DC Block
         let dc_fix = out - self.dc_block[ch];
-        self.dc_block[ch] = out + 0.9945 * (self.dc_block[ch] - out);
+        self.dc_block[ch] = out + 0.995 * (self.dc_block[ch] - out);
 
-        dc_fix * 0.84 // 最終レベルを少し上げてワイドレンジの迫力を維持
+        dc_fix * 0.82
     }
 }
 
@@ -137,6 +142,7 @@ impl XrossGainProcessor for XrossMetalSystem {
         self.envelope = [0.0; 2];
         self.prev_input = [0.0; 2];
         self.os_lpf = [0.0; 2];
+        self.os_lpf_2 = [0.0; 2];
         self.low_resonance = [0.0; 2];
         true
     }

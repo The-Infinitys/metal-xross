@@ -81,10 +81,10 @@ impl Default for GeneralParams {
     fn default() -> Self {
         let gain_string_func = |v: f32| format!("{:.2}", v);
         Self {
-            input: LevelParams::new(1.0, 1.0, 2.0),
+            input: LevelParams::new(0.0, 0.0, 12.0),
             gain: FloatParam::new("Gain", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_value_to_string(Arc::new(gain_string_func)),
-            output: LevelParams::new(1.0, 0.5, 1.0),
+            output: LevelParams::new(0.0, -3.0, 0.0),
         }
     }
 }
@@ -95,40 +95,41 @@ pub struct LevelParams {
     #[id = "gain"]
     pub gain: FloatParam,
 }
+
 impl LevelParams {
-    pub fn new(default_gain: f32, default_limit: f32, max_limit: f32) -> Self {
-        let db_string_func = Arc::new(|v: f32| {
-            if v <= 0.00001 {
+    pub fn new(default_gain_db: f32, default_limit_db: f32, max_limit_db: f32) -> Self {
+        // すでにデシベル値なので、単にフォーマットするだけでOK
+        let db_display_func = Arc::new(|v: f32| {
+            if v <= -59.9 {
                 "-inf".to_string()
             } else {
-                format!("{:.1}", 20.0 * v.log10())
+                format!("{:.1} dB", v)
             }
         });
 
-        // --- Gainの範囲設定 ---
-        // 0.0倍(-inf)から4.0倍(+12dB)まで。中心を1.0(0dB)に据える
+        // --- Gainの設定 (-60dB ~ +12dB) ---
+        // 0dB (1.0倍) をセンターに配置したい場合は Skewed を使用
         let gain_range = FloatRange::SymmetricalSkewed {
-            min: 0.0,
-            max: 4.0,
-            factor: FloatRange::skew_factor(2.0),
-            center: 1.0,
+            min: -60.0,
+            max: 12.0,
+            center: 0.0,
+            factor: FloatRange::skew_factor(0.0),
         };
 
-        // --- Limitの範囲設定 ---
-        // 要件: default_limit がノブの真ん中（center）に来るように設定
-        // メタル用途なら min は 0.01 (-40dB) 程度、max は max_limit (例: 1.0)
+        // --- Limitの設定 (-60dB ~ max_limit_db) ---
+        // default_limit_db がノブの真ん中に来るように設定
         let limit_range = FloatRange::SymmetricalSkewed {
-            min: 0.001, // 完全な0だとlogが壊れるため、-60dB程度を最小値に
-            max: max_limit,
-            center: default_limit,
-            factor: FloatRange::skew_factor((default_limit.ln() / 0.5_f32.ln()).abs().max(0.1)),
+            min: -60.0,
+            max: max_limit_db,
+            center: default_limit_db,
+            factor: FloatRange::skew_factor(0.0),
         };
 
         Self {
-            limit: FloatParam::new("Limit", default_limit, limit_range)
-                .with_value_to_string(db_string_func.clone()),
-            gain: FloatParam::new("Gain", default_gain, gain_range)
-                .with_value_to_string(db_string_func),
+            limit: FloatParam::new("Limit", default_limit_db, limit_range)
+                .with_value_to_string(db_display_func.clone()),
+            gain: FloatParam::new("Gain", default_gain_db, gain_range)
+                .with_value_to_string(db_display_func),
         }
     }
 }

@@ -49,7 +49,7 @@ impl XrossNoiseGate {
     }
 
     pub fn process_pre(&mut self, buffer: &mut Buffer) {
-        let threshold = self.params.noise_gate.threshold.value().db_to_linear();
+        let threshold = self.params.noise_gate.threshold.value().db_to_gain();
         let release_ms = self.params.noise_gate.release.value();
         let release_coeff = (-1.0 / (release_ms * self.sample_rate / 1000.0 * 0.8)).exp(); // 少し速め
 
