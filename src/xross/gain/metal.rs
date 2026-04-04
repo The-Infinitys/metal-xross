@@ -55,7 +55,7 @@ impl XrossMetalSystem {
         // Midは「削る」方向にシフト。低いほどモダンなドンシャリ、高いと箱鳴り。
         let scoop = (s_mid - 0.5) * 0.4;
         let mid_cut = x * x * x;
-        x -= mid_cut * (0.6 - scoop) ; // 基本的に中域を削って解像度を上げる
+        x -= mid_cut * (0.6 - scoop); // 基本的に中域を削って解像度を上げる
 
         // --- 3. INSANE GAIN STAGE ---
         // ゲイン倍率を大幅に強化 (+100dB級の飽和感)
