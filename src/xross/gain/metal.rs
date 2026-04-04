@@ -28,7 +28,6 @@ impl XrossMetalSystem {
             low_resonance: [0.0; 2],
         }
     }
-
     #[inline]
     fn drive_core(
         &mut self,
@@ -39,51 +38,52 @@ impl XrossMetalSystem {
         s_high: f32,
         ch: usize,
     ) -> f32 {
-        // --- 1. TIGHT & PUNCHY LOW (Style Low) ---
-        // 歪ませる前に低域をコントロール。Lowが高いほど、重低音の「共鳴」を付加。
-        let env = self.envelope[ch];
-        let hp_freq = 0.03 + (1.0 - s_low) * 0.2 + (env * 0.15); // タイトさを動的に確保
-        self.pre_hp[ch] += hp_freq * (input - self.pre_hp[ch]);
-        let mut x = input - self.pre_hp[ch];
+        // 1. 適度なプリ・ゲイン (「棒」にならない程度に抑える)
+        // gain 0.5付近で標準的なメタルサウンドになるよう調整
+        let pre_gain = 5.0 + (gain * 55.0);
+        let mut x = input * pre_gain;
 
-        // 低域の「重み」を補強するレゾナンス（Style Lowが高い時のみ）
-        let low_boost = s_low * 0.5 * (1.0 - env.min(0.8));
-        self.low_resonance[ch] += 0.1 * (x - self.low_resonance[ch]);
-        x += self.low_resonance[ch] * low_boost;
+        // 2. Pre-EQ (MT-2特有の削り)
+        let hp_freq = 0.1 + (1.0 - s_low) * 0.15;
+        self.pre_hp[ch] += hp_freq * (x - self.pre_hp[ch]);
+        x -= self.pre_hp[ch];
 
-        // --- 2. SCOOPED MID (Style Mid) ---
-        // Midは「削る」方向にシフト。低いほどモダンなドンシャリ、高いと箱鳴り。
-        let scoop = (s_mid - 0.5) * 0.4;
-        let mid_cut = x * x * x;
-        x -= mid_cut * (0.6 - scoop); // 基本的に中域を削って解像度を上げる
+        // 3. Multi-Stage Soft Clipping (ここが重要)
+        // 一気に潰さず、段階的に。
 
-        // --- 3. INSANE GAIN STAGE ---
-        // ゲイン倍率を大幅に強化 (+100dB級の飽和感)
-        let drive = (gain * 15.0).exp() * 10.0;
-        x *= drive;
+        // Stage 1: 非対称な飽和
+        x = if x > 0.0 { x.atan() } else { (x * 0.9).tanh() };
 
-        // --- 4. MULTI-STAGE HARD CLIPPING ---
-        // 1段目で深く潰し、2段目で非対称なエッジを立てる
-        // Style Highで「クリップの鋭さ」を直接操作
-        let hardness = 0.5 + (s_high * 2.0);
-        x = (x * hardness).tanh(); // メインの歪み
+        // Stage 2: ゲイン調整
+        // ここで倍率を上げすぎると「潰れた棒」になります。
+        x *= 2.0 + (gain * 10.0);
 
-        // 非対称クリップ（Style Highで高域の食いつきを強化）
-        x = if x > 0.0 {
-            x.min(0.95)
-        } else {
-            (x * (1.2 + s_high * 0.5)).atan() * 0.8
-        };
+        // Stage 3: Soft Knee (最終的な形を整える)
+        // clampの代わりにこれを使うことで、波形の頂点に「丸み」を与えます。
+        let soft_limit = 0.95;
+        if x.abs() > soft_limit {
+            x = soft_limit * (x / soft_limit).atan();
+        }
 
-        // --- 5. BITE & SHARP EDGE (Style High) ---
-        // スルーレート制限を緩和し、高域の「チリチリ」とした攻撃的な成分を開放
-        let max_step = 0.05 + (s_high * 0.95);
+        // 4. MT-2 Active EQ
+        // Mid Scoop: 削りすぎるとスカスカになるので、s_mid 0.5を基準に。
+        let scoop = (0.5 - s_mid).max(0.0) * 0.8;
+        x -= (x * x * x) * scoop;
+
+        // High: 金属的な質感を出すスルーレート
+        let bite = 0.15 + (s_high * 0.7);
         let diff = x - self.slew_state[ch];
-        self.slew_state[ch] += diff.clamp(-max_step, max_step);
+        self.slew_state[ch] += diff.clamp(-bite, bite);
+        x = self.slew_state[ch];
 
-        self.slew_state[ch]
+        // 5. Low / Punch (歪んだ後の厚み)
+        let punch = s_low * 0.4;
+        self.low_resonance[ch] += 0.1 * (x - self.low_resonance[ch]);
+        x += self.low_resonance[ch] * punch;
+
+        // 最終リミッター (安全策)
+        x.clamp(-1.0, 1.0)
     }
-
     fn process_sample(
         &mut self,
         input: f32,
