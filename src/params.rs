@@ -202,7 +202,7 @@ impl Default for EqualizerParams {
         Self {
             low: PeqBandParams::new("Low", 100.0, 20.0, 20000.0),
             mid: PeqBandParams::new("Mid", 1000.0, 20.0, 20000.0),
-            high: PeqBandParams::new("High", 4000.0, 20.0, 8000.0),
+            high: PeqBandParams::new("High", 4000.0, 20.0, 20000.0),
         }
     }
 }

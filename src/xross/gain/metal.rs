@@ -12,7 +12,7 @@ pub struct XrossMetalSystem {
     envelope: [f32; 2],
     prev_input: [f32; 2],
     os_lpf: [f32; 2],
-    os_lpf_2: [f32; 2], // 2段目追加
+    os_lpf_2: [f32; 2],
     low_resonance: [f32; 2],
 }
 
@@ -39,47 +39,38 @@ impl XrossMetalSystem {
         let s_mid = self.params.style.mid.value();
         let s_high = self.params.style.high.value();
 
-        // 1. プリ・ハイパス（OS係数で補正し、低域のボワつきをカット）
         let hp_freq = (0.155 + (1.0 - s_low) * 0.115) * os_inv;
         self.pre_hp[ch] += hp_freq * (input - self.pre_hp[ch]);
         let mut x = input - self.pre_hp[ch];
 
-        // 2. プリ・レゾナンス（ノイズを抑えつつエッジを立てる）
         let res_freq = 0.265 * os_inv;
         let res_q = 0.52 + (s_mid * 0.48);
         self.pre_res[ch] += res_freq * (x - self.pre_res[ch]);
         x = x + (x - self.pre_res[ch]) * (2.8 * res_q);
         self.pre_res[ch] *= 0.98;
 
-        // 3. ゲイン設定（入力ノイズを考慮し、ピークを制御）
         let drive = 5.0 + (gain * 30.0);
         x *= drive;
 
-        // Stage 1: Asymmetric Soft Clip
         x = if x > 0.0 {
             (x * 2.5).atan() * 0.9
         } else {
             (x * 2.0).tanh() * 1.1
         };
 
-        // Stage 2: Harder Edge
         let hard_warp = 2.0 + (gain * 30.0);
         x = (x * hard_warp).clamp(-0.90, 0.90);
 
-        // 4. ポスト・スクープEQ（不要な中域ノイズを削りV字を作る）
         let scoop_depth = (0.7 - s_mid).max(0.0) * 1.6;
         let scoop_filter = x.powi(3) - x * 0.3;
         x -= scoop_filter * scoop_depth;
 
-        // 5. Adaptive Bite Control（無音時のシャー音を抑制）
-        // envが低い時はbiteを絞り、ノイズを通さないように調整
         let bite_base = 0.12 + (s_high * 0.55);
         let bite = bite_base * (env * 0.85 + 0.15).min(1.0);
         let diff = x - self.slew_state[ch];
         self.slew_state[ch] += diff.clamp(-bite, bite);
         x = self.slew_state[ch];
 
-        // 6. Cabinet Punch
         let punch_amount = s_low * 1.35;
         let punch_freq = 0.08 * os_inv;
         self.low_resonance[ch] += punch_freq * (x - self.low_resonance[ch]);
@@ -93,7 +84,6 @@ impl XrossMetalSystem {
         let inv_os = 1.0 / os_factor as f32;
         let target = input.abs();
 
-        // エンベロープ検出
         let env_step = if target > self.envelope[ch] {
             0.3
         } else {
@@ -105,22 +95,18 @@ impl XrossMetalSystem {
         for i in 0..os_factor {
             let fraction = i as f32 * inv_os;
             let sub_sample = self.prev_input[ch] + (input - self.prev_input[ch]) * fraction;
-            // OS係数をdrive_coreに渡してフィルターを補正
             output_sum += self.drive_core(sub_sample, self.envelope[ch], ch, inv_os);
         }
 
         self.prev_input[ch] = input;
         let raw_out = output_sum * inv_os;
 
-        // === 強化ノイズ対策：2次LPF (12dB/oct) ===
-        // 1段目で大まかに削り、2段目でさらに急峻にカット
         let lpf_cutoff = 0.48;
         self.os_lpf[ch] += lpf_cutoff * (raw_out - self.os_lpf[ch]);
         self.os_lpf_2[ch] += lpf_cutoff * (self.os_lpf[ch] - self.os_lpf_2[ch]);
 
         let out = self.os_lpf_2[ch];
 
-        // DC Block
         let dc_fix = out - self.dc_block[ch];
         self.dc_block[ch] = out + 0.995 * (self.dc_block[ch] - out);
 
