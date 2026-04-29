@@ -1,7 +1,7 @@
 use crate::params::MetalXrossParams;
 use egui::{
-    vec2, Align2, Area, Color32, DragValue, FontId, Frame, Order, Pos2, Rect, Sense, Shape, Stroke,
-    Ui,
+    Align2, Area, Color32, DragValue, FontId, Frame, Order, Pos2, Rect, Sense, Shape, Stroke, Ui,
+    vec2,
 };
 use std::f32::consts::PI;
 

@@ -98,7 +98,7 @@ impl XrossLevelSystem {
 
             for ch in 0..num_channels {
                 let (_, out) = buffer.io(ch);
-                out[i] = out[i] * self.pre_boost;
+                out[i] *= self.pre_boost;
             }
         }
     }

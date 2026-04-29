@@ -1,4 +1,4 @@
-use egui::{pos2, Color32, Context, Rect, TextureHandle, TextureOptions, Ui};
+use egui::{Color32, Context, Rect, TextureHandle, TextureOptions, Ui, pos2};
 use std::sync::OnceLock;
 
 pub struct PcbBackground;

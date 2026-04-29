@@ -1,6 +1,6 @@
 use crate::utils::FloatParamNormalizedExt;
 use egui::{
-    vec2, Align2, Color32, FontId, Id, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget,
+    Align2, Color32, FontId, Id, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget, vec2,
 };
 use std::f32::consts::PI;
 

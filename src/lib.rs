@@ -10,6 +10,10 @@ use params::*;
 truce::plugin! {
     logic: MetalXross,
     params: MetalXrossParams,
+    bus_layouts: [BusLayout::new()
+        .with_input("Main", ChannelConfig::Mono)
+        .with_output("Main", ChannelConfig::Mono)
+    ],
 }
 
 #[cfg(test)]

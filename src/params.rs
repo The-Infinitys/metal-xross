@@ -1,4 +1,4 @@
-use truce::{params::FloatParam, Params};
+use truce::{Params, params::FloatParam};
 
 #[derive(Params)]
 pub struct MetalXrossParams {
