@@ -1,0 +1,13 @@
+[vendor]
+name = "My Company"
+id = "com.mycompany"
+url = "https://example.com"
+au_manufacturer = "MCom"
+
+[[plugin]]
+name = "MetalXross"
+bundle_id = "metal-xross"
+crate = "metal-xross"
+category = "effect"
+fourcc = "MXro"
+au_tag = "Effects"
