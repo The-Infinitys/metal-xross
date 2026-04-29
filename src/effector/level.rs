@@ -77,8 +77,8 @@ impl XrossLevelSystem {
             let mut max_sc = 1e-6f32;
 
             for ch in 0..num_channels {
-                let (inp, _) = buffer.io(ch);
-                let s = inp[i];
+                let (_, out) = buffer.io(ch);
+                let s = out[i];
 
                 // サイドチェイン用の直流カット
                 let hp = s - self.states[ch].sc_hp_state;
@@ -97,8 +97,8 @@ impl XrossLevelSystem {
             self.pre_boost = target_boost + coef * (self.pre_boost - target_boost);
 
             for ch in 0..num_channels {
-                let (inp, out) = buffer.io(ch);
-                out[i] = inp[i] * self.pre_boost;
+                let (_, out) = buffer.io(ch);
+                out[i] = out[i] * self.pre_boost;
             }
         }
     }
@@ -119,8 +119,8 @@ impl XrossLevelSystem {
             let mut max_peak = 1e-6f32;
 
             for ch in 0..num_channels {
-                let (inp, _) = buffer.io(ch);
-                let current_input = inp[i] * output_gain;
+                let (_, out) = buffer.io(ch);
+                let current_input = out[i] * output_gain;
 
                 // Look-ahead: 現在の入力をディレイに書き込み、過去のサンプルを出力候補にする
                 let delayed_sample = self.states[ch].delay_buffer[self.delay_idx];

@@ -68,8 +68,8 @@ impl XrossNoiseGate {
         for ch in 0..num_channels {
             let state = &mut self.states[ch];
             for i in 0..num_samples {
-                let (inp, out) = buffer.io(ch);
-                let input = inp[i];
+                let (_, out) = buffer.io(ch);
+                let input = out[i];
 
                 // 1. Detection (マルチバンドエンベロープ)
                 state.lp_pre += 0.12 * (input - state.lp_pre);
@@ -146,8 +146,8 @@ impl XrossNoiseGate {
                 let lpf_alpha = (tolerance * closing_factor * 0.85).min(0.99);
 
                 for i in 0..num_samples {
-                    let (inp, out) = buffer.io(ch);
-                    let s = inp[i];
+                    let (_, out) = buffer.io(ch);
+                    let s = out[i];
 
                     // 1-pole LPF でジリジリした高域ノイズだけを削る
                     state.post_lpf_state = s + lpf_alpha * (state.post_lpf_state - s);

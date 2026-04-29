@@ -84,10 +84,10 @@ impl XrossGainSystem {
 
         for ch_idx in 0..num_channels {
             // truce AudioBuffer から入力を取得
-            let (inp, out) = buffer.io(ch_idx);
+            let (_, out) = buffer.io(ch_idx);
 
             // 1. オリジナル入力を退避
-            self.input_copy[..num_samples].copy_from_slice(&inp[..num_samples]);
+            self.input_copy[..num_samples].copy_from_slice(&out[..num_samples]);
 
             // 2. スタイルAの計算
             self.tmp_buffer_a[..num_samples].copy_from_slice(&self.input_copy[..num_samples]);

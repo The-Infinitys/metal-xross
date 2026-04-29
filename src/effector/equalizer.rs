@@ -147,8 +147,8 @@ impl XrossEqualizer {
         for ch in 0..num_channels {
             let channel_state = &mut self.states[ch];
             for i in 0..num_samples {
-                let (inp, out) = buffer.io(ch);
-                let mut x = inp[i];
+                let (_, out) = buffer.io(ch);
+                let mut x = out[i];
 
                 // 3バンドを直列に処理
                 x = Self::process_sample(x, &c_low, &mut channel_state[0]);
