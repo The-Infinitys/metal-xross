@@ -1,49 +1,11 @@
 use truce::prelude::*;
-use truce_gui::layout::{GridLayout, knob, widgets};
-
-#[derive(Params)]
-pub struct MetalXrossParams {
-    #[param(name = "Gain", range = "linear(-60, 6)",
-            unit = "dB", smooth = "exp(5)")]
-    pub gain: FloatParam,
-}
-
-use MetalXrossParamsParamId as P;
-
-pub struct MetalXross {
-    params: Arc<MetalXrossParams>,
-}
-
-impl MetalXross {
-    pub fn new(params: Arc<MetalXrossParams>) -> Self {
-        Self { params }
-    }
-}
-
-impl PluginLogic for MetalXross {
-    fn reset(&mut self, sr: f64, _bs: usize) {
-        self.params.set_sample_rate(sr);
-        self.params.snap_smoothers();
-    }
-
-    fn process(&mut self, buffer: &mut AudioBuffer, _events: &EventList,
-               _context: &mut ProcessContext) -> ProcessStatus {
-        for i in 0..buffer.num_samples() {
-            let gain = db_to_linear(self.params.gain.smoothed_next() as f64) as f32;
-            for ch in 0..buffer.channels() {
-                let (inp, out) = buffer.io(ch);
-                out[i] = inp[i] * gain;
-            }
-        }
-        ProcessStatus::Normal
-    }
-
-    fn layout(&self) -> truce_gui::layout::GridLayout {
-        GridLayout::build("METALXROSS", "V0.1", 2, 50.0, vec![widgets(vec![
-            knob(P::Gain, "Gain"),
-        ])])
-    }
-}
+mod editor;
+mod effector;
+mod params;
+mod plugin;
+mod utils;
+use effector::*;
+use params::*;
 
 truce::plugin! {
     logic: MetalXross,
