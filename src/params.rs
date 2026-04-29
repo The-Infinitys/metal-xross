@@ -21,15 +21,14 @@ pub struct MetalXrossParams {
     pub gate_tolerance: FloatParam,
 
     #[param(
-        name = "Gate Release",
-        // リリース時間は短い方の解像度を上げるため skew を設定
-        range = "skewed(1.0, 500.0, 3.0)",
-        default = 100.0,
-        unit = " ms",
-        smooth = "exp(50)"
-    )]
+            name = "Gate Release",
+            // 一旦 linear で修正。1.0ms から 500.0ms の範囲
+            range = "linear(1.0, 500.0)",
+            default = 100.0,
+            unit = " ms",
+            smooth = "exp(50)"
+        )]
     pub gate_release: FloatParam,
-
     // --- General / Gain ---
     #[param(
         name = "Input Gain",
