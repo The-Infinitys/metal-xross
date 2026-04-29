@@ -2,12 +2,12 @@
 name = "The Infinity's"
 id = "org.infinite"
 url = "https://github.com/The-Infinitys/metal-xross"
-au_manufacturer = "Infinity"
+au_manufacturer = "Infi"
 
 [[plugin]]
 name = "MetalXross"
 bundle_id = "metal-xross"
 crate = "metal-xross"
 category = "effect"
-fourcc = "MXro"
+fourcc = "MTXS"
 au_tag = "Effects"
