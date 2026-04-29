@@ -1,8 +1,8 @@
 [vendor]
-name = "My Company"
-id = "com.mycompany"
-url = "https://example.com"
-au_manufacturer = "MCom"
+name = "The Infinity's"
+id = "org.infinite"
+url = "https://github.com/The-Infinitys/metal-xross"
+au_manufacturer = "Infinity"
 
 [[plugin]]
 name = "MetalXross"

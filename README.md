@@ -1,7 +1,3 @@
-Certainly! Here is the English version of the README.md, professionally tailored for your GitHub repository.
-
----
-
 # MetalXross
 
 **MetalXross** is a high-gain distortion plugin built with Rust and the `truce` framework. It features a unique "Xross Gain" engine that allows users to morph seamlessly between four distinct distortion algorithms, providing everything from vintage crunch to modern extreme metal tones.
