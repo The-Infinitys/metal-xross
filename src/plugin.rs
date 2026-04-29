@@ -1,6 +1,5 @@
 use crate::effector::MetalXross;
 use truce::prelude::*;
-
 impl PluginLogic for MetalXross {
     /// nih_plugの initialize に相当します
     fn reset(&mut self, sample_rate: f64, max_block_size: usize) {

@@ -2,12 +2,12 @@
 name = "The Infinity's"
 id = "org.infinite"
 url = "https://github.com/The-Infinitys/metal-xross"
-au_manufacturer = "Infi"
+au_manufacturer = "INFI"  # 厳密に4文字
 
 [[plugin]]
 name = "MetalXross"
-bundle_id = "metal-xross"
-crate = "metal-xross"
-category = "effect"
-fourcc = "MTXS"
+bundle_id = "metalxross"   # ハイフンなし推奨と書いてあります
+crate = "metal-xross"      # Cargoの実際の名前
+category = "effect"        # これを "effect" にすることでMIDIを排除しやすくする
+fourcc = "MXRS"            # 厳密に4文字
 au_tag = "Effects"
