@@ -69,3 +69,8 @@ When running at extremely low buffer sizes (64 samples or lower), you may encoun
 
 ### Credit
 Developed with ❤️ using **Rust** for the next generation of digital guitar tones.
+
+## 🎸 Show me your sound!
+If you use **MetalXross** in your tracks, videos, or projects, I would love to hear it! 
+Feel free to open an Issue, tag me on social media, or send a link. Seeing how this 
+distortion engine shapes your music is my greatest motivation.
