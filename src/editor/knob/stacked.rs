@@ -42,6 +42,7 @@ impl<'a> StackedKnob<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_value_edit(
         &self,
         ui: &mut Ui,
