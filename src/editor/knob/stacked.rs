@@ -108,7 +108,7 @@ impl<'a> StackedKnob<'a> {
                 Align2::CENTER_CENTER,
                 format!("{:.1} {}", p.value(), p.info.unit.as_str()),
                 font_id,
-                Color32::WHITE,
+                Color32::WHITE.lerp_to_gamma(color, p.value_normalized() as f32),
             );
         }
         is_editing

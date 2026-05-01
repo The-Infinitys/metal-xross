@@ -24,7 +24,7 @@ impl<'a> Widget for LinearSlider<'a> {
         // 編集状態の取得
         let mut is_editing =
             ui.memory(|mem| mem.data.get_temp::<bool>(text_edit_id).unwrap_or(false));
-        let text_rect = rect.shrink(2.0);
+        let text_rect = rect.scale_from_center(0.5);
 
         // --- インタラクション ---
 

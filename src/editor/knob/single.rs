@@ -68,12 +68,10 @@ impl<'a> Widget for SingleKnob<'a> {
             let active_color = self.get_dynamic_color(visual_val);
 
             // 矩形定義
-            let value_rect = Rect::from_min_max(rect.max - vec2(rect.width(), 25.0), rect.max);
+            let value_rect = Rect::from_min_max(rect.max - vec2(rect.width(), 0.0), rect.max);
             let knob_area_width = rect.width().min(rect.height() - 25.0);
-            let knob_rect = Rect::from_center_size(
-                rect.center() + vec2(0.0, -10.0),
-                egui::Vec2::splat(knob_area_width),
-            );
+            let knob_rect =
+                Rect::from_center_size(rect.center(), egui::Vec2::splat(knob_area_width));
 
             // B. ノブ本体
             let center = knob_rect.center();
