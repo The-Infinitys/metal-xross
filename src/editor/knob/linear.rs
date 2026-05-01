@@ -125,7 +125,12 @@ impl<'a> Widget for LinearSlider<'a> {
                     res.request_focus();
                 }
             } else {
-                let display_text = format!("{}: {:.1}", self.param.info.name, self.param.value());
+                let display_text = format!(
+                    "{}: {:.1} {}",
+                    self.param.info.name,
+                    self.param.value(),
+                    self.param.info.unit.as_str()
+                );
                 let font_id = FontId::proportional(11.0);
                 let text_pos = rect.center();
 

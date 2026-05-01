@@ -149,7 +149,11 @@ impl<'a> Widget for SingleKnob<'a> {
                 painter.rect_filled(value_rect.shrink(2.0), 4.0, Color32::from_black_alpha(100));
 
                 // 表示用テキスト（truceのparamから取得）
-                let display_text = format!("{:.1}", self.param.value());
+                let display_text = format!(
+                    "{:.1} {}",
+                    self.param.value(),
+                    self.param.info.unit.as_str()
+                );
 
                 painter.text(
                     value_rect.center(),

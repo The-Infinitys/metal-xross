@@ -106,7 +106,7 @@ impl<'a> StackedKnob<'a> {
             painter.text(
                 rect_center,
                 Align2::CENTER_CENTER,
-                format!("{:.1}", p.value()),
+                format!("{:.1} {}", p.value(), p.info.unit.as_str()),
                 font_id,
                 Color32::WHITE,
             );

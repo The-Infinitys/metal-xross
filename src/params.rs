@@ -7,7 +7,7 @@ pub struct MetalXrossParams {
         name = "Gate Threshold",
         range = "linear(-70.0, -10.0)",
         default = -45.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub gate_threshold: FloatParam,
@@ -34,7 +34,7 @@ pub struct MetalXrossParams {
         name = "Input Gain",
         range = "linear(-60.0, 12.0)",
         default = 0.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub input_gain: FloatParam,
@@ -43,7 +43,7 @@ pub struct MetalXrossParams {
         name = "Input Limit",
         range = "linear(-60.0, 12.0)",
         default = 0.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub input_limit: FloatParam,
@@ -60,7 +60,7 @@ pub struct MetalXrossParams {
         name = "Output Gain",
         range = "linear(-60.0, 0.0)",
         default = -3.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub output_gain: FloatParam,
@@ -69,7 +69,7 @@ pub struct MetalXrossParams {
         name = "Output Limit",
         range = "linear(-60.0, 0.0)",
         default = -3.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub output_limit: FloatParam,
@@ -115,7 +115,7 @@ pub struct MetalXrossParams {
         // 周波数は対数(skewed)が必須。低域にノブの余裕を持たせる
         range = "skewed(20.0, 2000.0, 0.5)",
         default = 100.0,
-        unit = " Hz",
+        unit = "Hz",
         smooth = "exp(50)"
     )]
     pub eq_lo_freq: FloatParam,
@@ -130,7 +130,7 @@ pub struct MetalXrossParams {
         name = "EQ Low Gain",
         range = "linear(-20.0, 20.0)",
         default = 0.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub eq_lo_gain: FloatParam,
@@ -140,7 +140,7 @@ pub struct MetalXrossParams {
         name = "EQ Mid Freq",
         range = "skewed(200.0, 8000.0, 0.5)",
         default = 1000.0,
-        unit = " Hz",
+        unit = "Hz",
         smooth = "exp(50)"
     )]
     pub eq_mi_freq: FloatParam,
@@ -155,7 +155,7 @@ pub struct MetalXrossParams {
         name = "EQ Mid Gain",
         range = "linear(-20.0, 20.0)",
         default = 0.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub eq_mi_gain: FloatParam,
@@ -165,7 +165,7 @@ pub struct MetalXrossParams {
         name = "EQ High Freq",
         range = "skewed(1000.0, 20000.0, 0.5)",
         default = 4000.0,
-        unit = " Hz",
+        unit = "Hz",
         smooth = "exp(50)"
     )]
     pub eq_hi_freq: FloatParam,
@@ -180,7 +180,7 @@ pub struct MetalXrossParams {
         name = "EQ High Gain",
         range = "linear(-20.0, 20.0)",
         default = 0.0,
-        unit = " dB",
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub eq_hi_gain: FloatParam,
