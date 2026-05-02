@@ -22,7 +22,6 @@ pub struct MetalXrossParams {
 
     #[param(
             name = "Gate Release",
-            // 一旦 linear で修正。1.0ms から 500.0ms の範囲
             range = "linear(1.0, 500.0)",
             default = 100.0,
             unit = " ms",
@@ -77,7 +76,7 @@ pub struct MetalXrossParams {
     // --- Style ---
     #[param(
         name = "Style",
-        range = "linear(0, 3)",
+        range = "linear(0.0, 3.0)",
         default = 3.0,
         // 種類を選択するものなのでスムージングは不要な場合が多い
         smooth = "none"
@@ -112,8 +111,7 @@ pub struct MetalXrossParams {
     // Low Band
     #[param(
         name = "EQ Low Freq",
-        // 周波数は対数(skewed)が必須。低域にノブの余裕を持たせる
-        range = "linear(20.0, 2000.0)",
+        range = "logarithmic(20.0, 2000.0)",
         default = 100.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -138,7 +136,7 @@ pub struct MetalXrossParams {
     // Mid Band
     #[param(
         name = "EQ Mid Freq",
-        range = "linear(200.0, 8000.0)",
+        range = "logarithmic(200.0, 8000.0)",
         default = 1000.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -163,7 +161,7 @@ pub struct MetalXrossParams {
     // High Band
     #[param(
         name = "EQ High Freq",
-        range = "linear(1000.0, 20000.0)",
+        range = "logarithmic(1000.0, 20000.0)",
         default = 4000.0,
         unit = "Hz",
         smooth = "exp(50)"

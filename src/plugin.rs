@@ -13,20 +13,6 @@ impl PluginLogic for MetalXross {
         events: &EventList,
         context: &mut ProcessContext,
     ) -> ProcessStatus {
-        events
-            .iter()
-            .map(|event| &event.body)
-            .for_each(|event| match event {
-                EventBody::ParamChange { id, value } => {
-                    self.params().set_normalized(*id, *value);
-                }
-
-                // MIDIノートなどは必要に応じて
-                EventBody::NoteOn { .. } => { /* ... */ }
-
-                // それ以外のイベントは無視するか適切に処理
-                _ => {}
-            });
         // nih_plugの process(buffer, aux, context) からの移植
         // buffer.as_slice() などでデータにアクセスして処理します
         self.process(buffer, events, context)
