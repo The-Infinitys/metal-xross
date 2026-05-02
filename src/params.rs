@@ -113,7 +113,7 @@ pub struct MetalXrossParams {
     #[param(
         name = "EQ Low Freq",
         // 周波数は対数(skewed)が必須。低域にノブの余裕を持たせる
-        range = "skewed(20.0, 2000.0, 0.5)",
+        range = "linear(20.0, 2000.0)",
         default = 100.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -121,7 +121,7 @@ pub struct MetalXrossParams {
     pub eq_lo_freq: FloatParam,
     #[param(
         name = "EQ Low Q",
-        range = "skewed(0.1, 10.0, 0.5)",
+        range = "linear(0.1, 10.0)",
         default = 0.707,
         smooth = "exp(50)"
     )]
@@ -138,7 +138,7 @@ pub struct MetalXrossParams {
     // Mid Band
     #[param(
         name = "EQ Mid Freq",
-        range = "skewed(200.0, 8000.0, 0.5)",
+        range = "linear(200.0, 8000.0)",
         default = 1000.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -146,7 +146,7 @@ pub struct MetalXrossParams {
     pub eq_mi_freq: FloatParam,
     #[param(
         name = "EQ Mid Q",
-        range = "skewed(0.1, 10.0, 0.5)",
+        range = "linear(0.1, 10.0)",
         default = 0.707,
         smooth = "exp(50)"
     )]
@@ -163,7 +163,7 @@ pub struct MetalXrossParams {
     // High Band
     #[param(
         name = "EQ High Freq",
-        range = "skewed(1000.0, 20000.0, 0.5)",
+        range = "linear(1000.0, 20000.0)",
         default = 4000.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -171,7 +171,7 @@ pub struct MetalXrossParams {
     pub eq_hi_freq: FloatParam,
     #[param(
         name = "EQ High Q",
-        range = "skewed(0.1, 10.0, 0.5)",
+        range = "linear(0.1, 10.0)",
         default = 0.707,
         smooth = "exp(50)"
     )]
