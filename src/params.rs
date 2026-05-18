@@ -111,7 +111,7 @@ pub struct MetalXrossParams {
     // Low Band
     #[param(
         name = "EQ Low Freq",
-        range = "logarithmic(20.0, 2000.0)",
+        range = "log(20.0, 2000.0)",
         default = 100.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -136,7 +136,7 @@ pub struct MetalXrossParams {
     // Mid Band
     #[param(
         name = "EQ Mid Freq",
-        range = "logarithmic(200.0, 8000.0)",
+        range = "log(200.0, 8000.0)",
         default = 1000.0,
         unit = "Hz",
         smooth = "exp(50)"
@@ -161,7 +161,7 @@ pub struct MetalXrossParams {
     // High Band
     #[param(
         name = "EQ High Freq",
-        range = "logarithmic(1000.0, 20000.0)",
+        range = "log(1000.0, 20000.0)",
         default = 4000.0,
         unit = "Hz",
         smooth = "exp(50)"

@@ -29,7 +29,7 @@ enum KnobParam<'a> {
 }
 
 pub fn create(params: Arc<MetalXrossParams>) -> Box<dyn Editor> {
-    let editor = EguiEditor::new((800, 500), move |ctx, _state| {
+    let editor = EguiEditor::new(params.clone(), (800, 500), move |ctx, _state| {
         egui::CentralPanel::default()
             .frame(Frame::NONE.fill(Color32::BLACK))
             .show(ctx, |ui| {

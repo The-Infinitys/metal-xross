@@ -20,4 +20,11 @@ impl PluginLogic for MetalXross {
     fn custom_editor(&self) -> Option<Box<dyn Editor>> {
         Some(self.ui())
     }
+    fn bus_layouts() -> Vec<BusLayout> {
+        vec![
+            BusLayout::new()
+                .with_input("Main", ChannelConfig::Mono)
+                .with_output("Main", ChannelConfig::Mono),
+        ]
+    }
 }

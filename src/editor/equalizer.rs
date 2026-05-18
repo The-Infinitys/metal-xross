@@ -4,6 +4,7 @@ use egui::{
     vec2,
 };
 use std::f32::consts::PI;
+use truce::params::FloatParamReadF32;
 
 // --- 周波数変換ユーティリティ (変更なし) ---
 fn norm_to_freq(norm: f32) -> f32 {

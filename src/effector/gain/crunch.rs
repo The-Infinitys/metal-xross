@@ -1,3 +1,5 @@
+use truce::params::FloatParamReadF32;
+
 use super::XrossGainProcessor;
 use crate::params::MetalXrossParams;
 use std::sync::Arc;

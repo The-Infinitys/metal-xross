@@ -1,6 +1,7 @@
 use super::XrossGainProcessor;
 use crate::params::MetalXrossParams;
 use std::sync::Arc;
+use truce::params::FloatParamReadF32;
 
 #[derive(Default, Clone)]
 struct DriveChannelState {
