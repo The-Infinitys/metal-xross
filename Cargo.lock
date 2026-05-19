@@ -211,7 +211,7 @@ dependencies = [
 [[package]]
 name = "baseview"
 version = "0.1.1"
-source = "git+https://github.com/truce-audio/baseview.git#faaa30a618d151637d4ceb815923ba76eaff1c79"
+source = "git+https://github.com/truce-audio/baseview.git#4d72f2c2ea13aaf04329937eea11df5f3416d211"
 dependencies = [
  "keyboard-types",
  "nix",
@@ -1410,6 +1410,7 @@ dependencies = [
  "egui",
  "image",
  "truce",
+ "truce-au",
  "truce-build",
  "truce-clap",
  "truce-egui",
@@ -2610,6 +2611,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "truce-au"
+version = "0.44.0"
+source = "git+https://github.com/truce-audio/truce?tag=v0.44.0#97a08b966c36025c58d0169ea1500462516f7dad"
+dependencies = [
+ "cc",
+ "crossbeam-queue",
+ "truce-core",
+ "truce-params",
+ "truce-shim-types",
+]
+
+[[package]]
 name = "truce-build"
 version = "0.44.0"
 source = "git+https://github.com/truce-audio/truce?tag=v0.44.0#97a08b966c36025c58d0169ea1500462516f7dad"
@@ -2780,6 +2793,11 @@ dependencies = [
  "truce-gui-types",
  "truce-params",
 ]
+
+[[package]]
+name = "truce-shim-types"
+version = "0.44.0"
+source = "git+https://github.com/truce-audio/truce?tag=v0.44.0#97a08b966c36025c58d0169ea1500462516f7dad"
 
 [[package]]
 name = "truce-standalone"
