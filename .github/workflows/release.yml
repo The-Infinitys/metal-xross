@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*" # v1.0.0 や v1.0.0-rc1 などのタグで起動
+  workflow_dispatch: # 手動実行ボタンも残してあります
 
 jobs:
   build-and-package:
@@ -18,7 +19,7 @@ jobs:
             formats: "vst3,clap"
           - os: macos-latest
             platform: macos
-            formats: "vst3,clap,au"
+            formats: "vst3,clap,au2"
           - os: ubuntu-latest
             platform: linux
             formats: "vst3,clap,lv2"
@@ -33,7 +34,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
-      # Linux用：VST3/LV2ビルドに必要な依存ライブラリのインストール
+      # Linux用：ビルドに必要な依存ライブラリのインストール
       - name: Install Linux dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -44,10 +45,11 @@ jobs:
       - name: Install cargo-truce
         run: cargo install cargo-truce --locked
 
-      # 各OSでのプラグインビルドとインストーラー生成
-      - name: Build and Bundle Plugins
+      # 正しいコマンド `cargo truce package` を使用
+      # Windowsなら Inno Setup (.exe)、Macなら .pkg、Linuxなら適切なパッケージが target/dist/ に生成されます
+      - name: Build and Package Plugins
         run: |
-          cargo truce bundle --release --formats ${{ matrix.formats }}
+          cargo truce package --formats ${{ matrix.formats }} --no-notarize
 
       # タグ名にハイフン（-）が含まれているかチェックして判定
       - name: Check if pre-release
@@ -60,11 +62,11 @@ jobs:
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      # 生成されたパッケージをGitHub Releaseにアップロード（Pre-release自動判定付き）
+      # 生成されたパッケージ（target/dist/ 以下のファイル）をGitHub Releaseにアップロード
       - name: Upload Artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/truce/bundled/*
+          files: target/dist/*
           prerelease: ${{ steps.check_release.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
