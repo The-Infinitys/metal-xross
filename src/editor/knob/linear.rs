@@ -1,5 +1,5 @@
 use crate::utils::FloatParamNormalizedExt;
-use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, Ui, Widget, vec2};
+use egui::{Align2, Color32, FontId, Frame, Rect, Response, Sense, Stroke, Ui, Widget, vec2};
 use truce::params::FloatParamReadF32;
 
 pub struct LinearSlider<'a> {
@@ -107,7 +107,7 @@ impl<'a> Widget for LinearSlider<'a> {
                     egui::TextEdit::singleline(&mut value_text)
                         .font(FontId::proportional(11.0))
                         .horizontal_align(egui::Align::Center)
-                        .frame(false),
+                        .frame(Frame::NONE),
                 );
 
                 if res.changed() {

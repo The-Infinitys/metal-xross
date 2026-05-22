@@ -1,4 +1,6 @@
-use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget, vec2};
+use egui::{
+    Align2, Color32, FontId, Frame, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget, vec2,
+};
 use std::f32::consts::PI;
 use truce::params::FloatParamReadF32;
 
@@ -125,7 +127,7 @@ impl<'a> Widget for SingleKnob<'a> {
                     egui::TextEdit::singleline(&mut value_text)
                         .font(FontId::proportional(12.0))
                         .horizontal_align(egui::Align::Center)
-                        .frame(true),
+                        .frame(Frame::NONE),
                 );
 
                 if res.changed() {

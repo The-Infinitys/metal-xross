@@ -1,7 +1,7 @@
 use crate::params::MetalXrossParams;
 use egui::{
-    Align2, Area, Color32, DragValue, FontId, Frame, Order, Pos2, Rect, Sense, Shape, Stroke, Ui,
-    vec2,
+    Align2, Area, Color32, DragValue, FontId, Frame, Order, Popup, Pos2, Rect, Sense, Shape,
+    Stroke, Ui, vec2,
 };
 use std::f32::consts::PI;
 use truce::params::FloatParamReadF32;
@@ -255,7 +255,7 @@ impl EqualizerBox {
             p_gain.set_value(p_gain.info.default_plain);
             p_q.set_value(p_q.info.default_plain);
         } else if resp.clicked() {
-            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+            Popup::toggle_id(ui.ctx(), popup_id);
         }
 
         // ドラッグ操作
@@ -282,7 +282,7 @@ impl EqualizerBox {
         }
 
         // 数値入力ポップアップ
-        if ui.memory(|mem| mem.is_popup_open(popup_id)) {
+        if Popup::is_id_open(ui.ctx(), popup_id) {
             Area::new(popup_id)
                 .order(Order::Foreground)
                 .fixed_pos(pos + vec2(10.0, 10.0))
@@ -318,15 +318,14 @@ impl EqualizerBox {
         }
 
         let painter = ui.painter().with_clip_rect(rect);
-        let is_active =
-            resp.hovered() || resp.dragged() || ui.memory(|mem| mem.is_popup_open(popup_id));
+        let is_active = resp.hovered() || resp.dragged() || Popup::is_id_open(ui.ctx(), popup_id);
 
         // 描画
         let q_radius = ((rect.width() * 0.08) / p_q.value().sqrt()).clamp(8.0, rect.width() / 4.0);
         painter.circle_stroke(pos, q_radius, Stroke::new(0.5, color.linear_multiply(0.3)));
         painter.circle_filled(pos, 5.0, if is_active { Color32::WHITE } else { color });
 
-        if is_active && !ui.memory(|mem| mem.is_popup_open(popup_id)) {
+        if is_active && !Popup::is_id_open(ui.ctx(), popup_id) {
             let label_text = format!(
                 "{}\n{:.0}Hz\n{:.1}dB",
                 label,

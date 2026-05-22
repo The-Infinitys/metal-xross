@@ -1,6 +1,7 @@
 use crate::utils::FloatParamNormalizedExt;
 use egui::{
-    Align2, Color32, FontId, Id, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget, vec2,
+    Align2, Color32, FontId, Frame, Id, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Widget,
+    vec2,
 };
 use truce::params::FloatParamReadF32;
 
@@ -78,7 +79,7 @@ impl<'a> StackedKnob<'a> {
                 text_rect,
                 egui::TextEdit::singleline(&mut val_str)
                     .font(font_id)
-                    .frame(true)
+                    .frame(Frame::NONE)
                     .margin(vec2(2.0, 0.0))
                     .horizontal_align(egui::Align::Center),
             );
