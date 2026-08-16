@@ -22,9 +22,9 @@ pub struct MetalXrossParams {
 
     #[param(
         name = "Gate Release",
-        range = "linear(1.0, 500.0)",
-        default = 100.0,
-        unit = "ms",
+        range = "linear(-80.0, -20.0)",
+        default = -60,
+        unit = "dB",
         smooth = "exp(50)"
     )]
     pub gate_release: FloatParam,

@@ -1,3 +1,4 @@
+// src/amp/noisegate.rs
 use crate::params::MetalXrossParams;
 use std::sync::Arc;
 use truce::prelude::*;
@@ -59,11 +60,13 @@ impl XrossNoiseGate {
 
         let threshold_db = self.params.gate_threshold.value();
         let open_threshold = db_to_gain(threshold_db);
-        let close_threshold = db_to_gain(threshold_db - 3.0); // 3dB ヒステリシス
 
-        let release_ms = self.params.gate_release.value();
+        let release_db = self.params.gate_release.value();
+        let close_threshold = db_to_gain(release_db);
+
+        // スムージング用の係数（アタックは高速固定、リリースは音量ベースの追従に合わせて滑らかに）
         let attack_coeff = (-1.0 / (0.001 * self.sample_rate)).exp(); // 1ms
-        let release_coeff = (-1.0 / (release_ms * self.sample_rate / 1000.0)).exp();
+        let release_coeff = (-1.0 / (0.010 * self.sample_rate)).exp(); // 10ms
 
         for ch in 0..num_channels {
             let state = &mut self.states[ch];
@@ -99,21 +102,23 @@ impl XrossNoiseGate {
                 let current_env =
                     (state.mid_env * 0.7) + (state.low_env * 0.15) + (state.high_env * 0.15);
 
-                // 2. Gate Logic
-                let is_playing = if state.gate_gain < 0.1 {
-                    current_env > open_threshold
-                } else {
-                    current_env > close_threshold
-                };
-
-                let target_gain = if is_playing {
+                // 2. 音量ベースのレンジ制御（Threshold と Release(dB) の間を連続的に減衰）
+                let target_gain = if current_env >= open_threshold {
                     state.hold_timer = (0.020 * self.sample_rate) as i32; // 20ms hold
                     1.0
                 } else if state.hold_timer > 0 {
                     state.hold_timer -= 1;
                     1.0
-                } else {
+                } else if current_env <= close_threshold {
                     0.0
+                } else {
+                    // Threshold と Close(Release) の間の音量を線形（またはカスタムカーブ）にマッピングして徐々に減衰
+                    let range = open_threshold - close_threshold;
+                    if range > 1e-6 {
+                        ((current_env - close_threshold) / range).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    }
                 };
 
                 // 3. Smooth & Apply
